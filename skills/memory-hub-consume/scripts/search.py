@@ -16,7 +16,7 @@ import os
 import re
 import sys
 
-ROOT = os.environ.get("MEMORY_HUB_ROOT") or os.environ.get("DUTI_MEMORY_ROOT") or os.path.join(os.path.expanduser("~"), "DutiMemory")
+ROOT = os.environ.get("MEMORY_HUB_ROOT") or os.path.join(os.path.expanduser("~"), "MemoryHub")
 SESSION_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-session-(.+)\.md$", re.I)
 HASH_RE = re.compile(r"^([a-z]+)-(global|project)-[0-9a-f]{6,8}\.md$", re.I)
 FIXED = {"project-rules": "rule", "global-rules": "rule", "rules": "rule",

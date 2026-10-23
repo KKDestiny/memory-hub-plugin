@@ -80,27 +80,27 @@ class MergeHooksZcodeTest(unittest.TestCase):
 class PatchTomlClientTest(unittest.TestCase):
     def test_args_with_comma_in_value_and_env_value_are_corrected(self):
         text = "\n".join([
-            "# --- duti-mcp (added by memory-hub-setup) ---",
-            "[mcp_servers.duti-mcp]",
-            'command = "duti-mcp"',
+            "# --- memory-hub (added by memory-hub-setup) ---",
+            "[mcp_servers.memory-hub]",
+            'command = "memory-hub"',
             'args = ["node", "/opt/tools,dir/server.js", "--client", "old-id"]',
             "",
-            "[mcp_servers.duti-mcp.env]",
-            'DUTI_CLIENT_ID = "old-id"',
+            "[mcp_servers.memory-hub.env]",
+            'MEMORY_HUB_CLIENT_ID = "old-id"',
             "",
         ])
         new_text, changed = setup.patch_toml_client(text, "new-id", "mcp_servers")
         self.assertTrue(changed)
         self.assertIn('"--client", "new-id"', new_text)
         self.assertIn('"/opt/tools,dir/server.js"', new_text)
-        self.assertIn('DUTI_CLIENT_ID = "new-id"', new_text)
+        self.assertIn('MEMORY_HUB_CLIENT_ID = "new-id"', new_text)
 
     def test_missing_client_argument_is_appended(self):
         text = "\n".join([
-            "# --- duti-mcp (added by memory-hub-setup) ---",
-            "[mcp_servers.duti-mcp]",
-            'command = "duti-mcp"',
-            'args = ["duti-mcp"]',
+            "# --- memory-hub (added by memory-hub-setup) ---",
+            "[mcp_servers.memory-hub]",
+            'command = "memory-hub"',
+            'args = ["memory-hub"]',
             "",
         ])
         new_text, changed = setup.patch_toml_client(text, "zcode", "mcp_servers")

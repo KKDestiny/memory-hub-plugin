@@ -39,7 +39,7 @@ from project_id import normalize_project_path, project_slug  # noqa: E402
 from redact import redact  # noqa: E402
 
 HOME = os.path.expanduser("~")
-ROOT = os.environ.get("MEMORY_HUB_ROOT") or os.environ.get("DUTI_MEMORY_ROOT") or os.path.join(HOME, "DutiMemory")
+ROOT = os.environ.get("MEMORY_HUB_ROOT") or os.path.join(HOME, "MemoryHub")
 
 
 def read_capture_policy():
@@ -257,7 +257,7 @@ def main():
         if args.text_file:
             try:
                 body = open(args.text_file, encoding="utf-8").read()
-                item_count = int(os.environ.get("DUTI_ITEM_COUNT") or 1)
+                item_count = int(os.environ.get("MEMORY_HUB_ITEM_COUNT") or 1)
             except OSError as e:
                 print(json.dumps({"ok": False, "skip": True, "reason": "read failed: %s" % e}))
                 return 2

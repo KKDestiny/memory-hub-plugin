@@ -14,7 +14,7 @@ description: Wire this AI coding client into the shared memory hub — idempoten
    - 写入目标是宿主的真实配置文件（ZCode = `~/.zcode/cli/config.json`、WorkBuddy = `~/.workbuddy/settings.json` 等）
    - 事件在宿主支持的事件集合内（ZCode 仅支持 Stop；MiniMax 的事件白名单不含 Stop；TRAE 不含 SessionEnd）
    - **MCP 条目必须携带客户端标识**：`args` 中包含 `--client <ClientID>`，`env` 中包含
-     `DUTI_CLIENT_ID=<ClientID>`，且与输出中的 `clientId` 字段一致。`clientId` 是中台登记的
+     `MEMORY_HUB_CLIENT_ID=<ClientID>`，且与输出中的 `clientId` 字段一致。`clientId` 是中台登记的
      规范标识（由可选管理端在授权时确定；未登记时等于宿主 id，与本次 `--client` 参数一致）。
      用户要求更换标识时，应先在中台或管理端中修改，不得在宿主配置中手工改名。
 3. 写入：去掉 `--dry-run` 重新执行（幂等：包含 `memory_hub_hook` 标记的条目不会重复追加；已存在的
@@ -27,7 +27,7 @@ description: Wire this AI coding client into the shared memory hub — idempoten
 
 ## 回滚
 - `cp <配置文件>.hub-bak <配置文件>`（脚本每次写入前都会保留一份备份）。
-- 或手工删除包含 `memory_hub_hook` 标记的钩子条目 / `duti-mcp` 这个 server 条目。
+- 或手工删除包含 `memory_hub_hook` 标记的钩子条目 / `memory-hub` 这个 server 条目。
 
 ## 边界
 - 脚本不修改记忆中台数据目录中的任何文件。

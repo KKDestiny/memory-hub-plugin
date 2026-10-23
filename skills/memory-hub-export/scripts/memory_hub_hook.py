@@ -36,7 +36,7 @@ except Exception:
     redact_turns = None
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.environ.get("MEMORY_HUB_ROOT") or os.environ.get("DUTI_MEMORY_ROOT") or os.path.join(os.path.expanduser("~"), "DutiMemory")
+ROOT = os.environ.get("MEMORY_HUB_ROOT") or os.path.join(os.path.expanduser("~"), "MemoryHub")
 
 
 def clip(text, limit):
@@ -160,7 +160,7 @@ def connect_ro(db_path, timeout=None):
 
 def read_zcode_turns(session_id, db_path=None):
     """只读增量读取 ZCode 的私有会话数据库：message 与 part 两表 → 逐轮全文。返回 (轮次列表, 最大 rowid)。"""
-    db_path = db_path or os.environ.get("DUTI_ZCODE_DB") or os.path.join(os.path.expanduser("~"), ".zcode", "cli", "db", "db.sqlite")
+    db_path = db_path or os.environ.get("MEMORY_HUB_ZCODE_DB") or os.path.join(os.path.expanduser("~"), ".zcode", "cli", "db", "db.sqlite")
     if not os.path.exists(db_path):
         return [], 0
     try:
@@ -242,7 +242,7 @@ HOST_SESSION_ROOTS = {
 
 
 def zcode_db_path():
-    return os.environ.get("DUTI_ZCODE_DB") or os.path.join(os.path.expanduser("~"), ".zcode", "cli", "db", "db.sqlite")
+    return os.environ.get("MEMORY_HUB_ZCODE_DB") or os.path.join(os.path.expanduser("~"), ".zcode", "cli", "db", "db.sqlite")
 
 
 def list_zcode_sessions():
@@ -293,7 +293,7 @@ def emit_session(client, session_id, cwd, turns, summary="", title="", cursor=0)
     cursor = int(cursor or 0) or len(turns)
     if redact is not None and not _HTTP_DISABLED:
         try:
-            state_file = os.path.join(ROOT, ".state", "duti-app.json")
+            state_file = os.path.join(ROOT, ".state", "app.json")
             endpoint = json.load(open(state_file, encoding="utf-8"))
             import urllib.request
             http_summary, _ = redact(summary)
@@ -613,7 +613,7 @@ def main():
     if redact is not None:
         try:
             http_summary, _ = redact(summary or "")
-            state_file = os.path.join(ROOT, ".state", "duti-app.json")
+            state_file = os.path.join(ROOT, ".state", "app.json")
             endpoint = json.load(open(state_file, encoding="utf-8"))
             import urllib.request
             payload_out = {"client": client, "kind": "session", "scope": "project" if cwd else "global",

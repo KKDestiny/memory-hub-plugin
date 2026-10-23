@@ -13,7 +13,7 @@
     "memory_hub_hook" 作为去重标记。
   * 写入前备份为 <文件>.hub-bak；配置文件无法解析时中止并保留原文件（退出码 4）。
   * 适配表中未确认钩子结构的宿主（hooks 为 null）会明确报告不支持自动安装及原因，不猜测路径。
-  * 客户端标识约束：写入 MCP 条目时必须同时注入 "--client <id>" 参数与 DUTI_CLIENT_ID 环境变量；
+  * 客户端标识约束：写入 MCP 条目时必须同时注入 "--client <id>" 参数与 MEMORY_HUB_CLIENT_ID 环境变量；
     对已存在的条目同样补齐或校正（written 为 "updated"）。宿主在 MCP 握手中自报的名称不受本工具
     控制，只有注入的标识才能保证导出目录 clients/<id>/ 与连接侧的授权记录指向同一客户端。
   * 客户端标识以中台登记为准：--client 传入的是宿主 id（适配表的键），实际写入配置的标识从中台
@@ -42,11 +42,8 @@ PY = sys.executable
 
 
 def memory_root():
-    """中台数据根目录。环境变量优先级：MEMORY_HUB_ROOT > DUTI_XMEM_ROOT > DUTI_MEMORY_ROOT，缺省 ~/DutiMemory。"""
-    return (os.environ.get("MEMORY_HUB_ROOT")
-            or os.environ.get("DUTI_XMEM_ROOT")
-            or os.environ.get("DUTI_MEMORY_ROOT")
-            or os.path.join(os.path.expanduser("~"), "DutiMemory"))
+    """中台数据根目录。环境变量 MEMORY_HUB_ROOT 优先；缺省为 ~/MemoryHub。"""
+    return os.environ.get("MEMORY_HUB_ROOT") or os.path.join(os.path.expanduser("~"), "MemoryHub")
 
 
 def canonical_client(host):
@@ -216,29 +213,29 @@ def merge_hooks(cfg, adapter, client, resolve=None):
 
 
 def mcp_server(adapter, client):
-    """构造 duti-mcp 的 server 条目。客户端标识为必填项，见模块头的约束说明。"""
+    """构造 memory-hub 的 server 条目。客户端标识为必填项，见模块头的约束说明。"""
     extra = adapter["mcp"].get("serverExtra") or {}
     server_path = ""
     try:
-        endpoint = json.load(open(os.path.join(memory_root(), ".state", "duti-app.json"), encoding="utf-8"))
+        endpoint = json.load(open(os.path.join(memory_root(), ".state", "app.json"), encoding="utf-8"))
         server_path = endpoint.get("serverPath") or ""
     except (OSError, ValueError):
         server_path = ""
     root = memory_root()
     if adapter["mcp"].get("shape") == "opencode":
-        cmd = ["node", server_path] if server_path and os.path.exists(server_path) else ["duti-mcp"]
+        cmd = ["node", server_path] if server_path and os.path.exists(server_path) else ["memory-hub"]
         return {"type": "local", "command": cmd + [CLIENT_ARG, client],
-                "environment": {"DUTI_MEMORY_ROOT": root, "DUTI_CLIENT_ID": client}}
-    cmd = ["node", server_path] if server_path and os.path.exists(server_path) else ["duti-mcp"]
+                "environment": {"MEMORY_HUB_ROOT": root, "MEMORY_HUB_CLIENT_ID": client}}
+    cmd = ["node", server_path] if server_path and os.path.exists(server_path) else ["memory-hub"]
     out = dict(extra)
     out["command"] = cmd[0]
     out["args"] = cmd[1:] + [CLIENT_ARG, client]
-    out["env"] = {"DUTI_MEMORY_ROOT": root, "DUTI_CLIENT_ID": client}
+    out["env"] = {"MEMORY_HUB_ROOT": root, "MEMORY_HUB_CLIENT_ID": client}
     return out
 
 
 def inject_client_id(entry, client, shape="json"):
-    """为已存在的 duti-mcp 条目补齐或校正客户端标识，返回是否有改动。
+    """为已存在的 memory-hub 条目补齐或校正客户端标识，返回是否有改动。
 
     缺失时补上；取值与中台登记不一致时改为登记值。只修改标识相关字段，
     不改动条目中的其他字段。
@@ -261,8 +258,8 @@ def inject_client_id(entry, client, shape="json"):
         env = entry.get("environment")
         if not isinstance(env, dict):
             env = {}
-        if env.get("DUTI_CLIENT_ID") != client:
-            env["DUTI_CLIENT_ID"] = client
+        if env.get("MEMORY_HUB_CLIENT_ID") != client:
+            env["MEMORY_HUB_CLIENT_ID"] = client
             changed = True
         entry["environment"] = env
         return changed
@@ -280,8 +277,8 @@ def inject_client_id(entry, client, shape="json"):
     env = entry.get("env")
     if not isinstance(env, dict):
         env = {}
-    if env.get("DUTI_CLIENT_ID") != client:
-        env["DUTI_CLIENT_ID"] = client
+    if env.get("MEMORY_HUB_CLIENT_ID") != client:
+        env["MEMORY_HUB_CLIENT_ID"] = client
         changed = True
     entry["env"] = env
     return changed
@@ -301,10 +298,10 @@ def merge_mcp_json(cfg, adapter, client):
         box = {}
     cur[keys[-1]] = box
     shape = adapter["mcp"].get("shape") or "json"
-    if "duti-mcp" in box:
+    if "memory-hub" in box:
         # 已存在的条目不做整条替换，只补齐客户端标识，保证导出侧与连接侧标识一致
-        return cfg, ("updated" if inject_client_id(box["duti-mcp"], client, shape) else False)
-    box["duti-mcp"] = mcp_server(adapter, client)
+        return cfg, ("updated" if inject_client_id(box["memory-hub"], client, shape) else False)
+    box["memory-hub"] = mcp_server(adapter, client)
     return cfg, "created"
 
 
@@ -346,19 +343,19 @@ def parse_toml_string_array(body):
 
 def patch_toml_client(text, client, table):
     """校正 TOML 配置中已存在的条目（Codex）：在 args 数组中补齐或校正 --client，
-    在 env 表中补齐或校正 DUTI_CLIENT_ID。返回 (文本, 是否有改动)。
+    在 env 表中补齐或校正 MEMORY_HUB_CLIENT_ID。返回 (文本, 是否有改动)。
 
     这是基于文本行的最小实现：找不到本工具写入的标记或结构时原样返回，
     由调用方提示人工处理。
     """
     lines = text.split(chr(10))
-    marker_i = next((i for i, l in enumerate(lines) if "duti-mcp (added by memory-hub-setup)" in l), -1)
+    marker_i = next((i for i, l in enumerate(lines) if "memory-hub (added by memory-hub-setup)" in l), -1)
     if marker_i < 0:
         return text, False
     changed = False
-    # args 行位于本工具写入的表头 [table.duti-mcp] 之后、下一个表头之前；
+    # args 行位于本工具写入的表头 [table.memory-hub] 之后、下一个表头之前；
     # 表头本身以 "[" 开头，扫描必须先定位表头再读取 args，不能见到 "[" 就终止
-    table_head = "[%s.duti-mcp]" % table
+    table_head = "[%s.memory-hub]" % table
     args_i = -1
     seen_table = False
     for i in range(marker_i, len(lines)):
@@ -386,28 +383,28 @@ def patch_toml_client(text, client, table):
             changed = True
         if changed:
             lines[args_i] = "args = [%s]" % ", ".join(json.dumps(v) for v in vals)
-    env_head = "[%s.duti-mcp.env]" % table
+    env_head = "[%s.memory-hub.env]" % table
     env_i = next((i for i in range(marker_i, len(lines)) if lines[i].strip() == env_head), -1)
     if env_i >= 0:
         end = env_i + 1
         has = False
         while end < len(lines) and not lines[end].strip().startswith("["):
-            if lines[end].strip().startswith("DUTI_CLIENT_ID"):
-                want = "DUTI_CLIENT_ID = %s" % json.dumps(client)
+            if lines[end].strip().startswith("MEMORY_HUB_CLIENT_ID"):
+                want = "MEMORY_HUB_CLIENT_ID = %s" % json.dumps(client)
                 if lines[end].strip() != want:
                     lines[end] = want
                     changed = True
                 has = True
             end += 1
         if not has:
-            lines.insert(env_i + 1, "DUTI_CLIENT_ID = %s" % json.dumps(client))
+            lines.insert(env_i + 1, "MEMORY_HUB_CLIENT_ID = %s" % json.dumps(client))
             changed = True
     return chr(10).join(lines), changed
 
 
 def merge_mcp_toml(path_, adapter, client):
     """Codex 的 config.toml 写入：标记注释 + 幂等追加或补齐（Python 标准库不提供 TOML 写入）。"""
-    marker = "# --- duti-mcp (added by memory-hub-setup) ---"
+    marker = "# --- memory-hub (added by memory-hub-setup) ---"
     server = mcp_server(adapter, client)
     table = adapter["mcp"]["table"]
     text = ""
@@ -416,9 +413,9 @@ def merge_mcp_toml(path_, adapter, client):
     if marker in text:
         new_text, changed = patch_toml_client(text, client, table)
         return new_text, ("updated" if changed else False)
-    block = [marker, "[%s.duti-mcp]" % table, 'command = "%s"' % server["command"],
+    block = [marker, "[%s.memory-hub]" % table, 'command = "%s"' % server["command"],
              "args = [%s]" % ", ".join(json.dumps(x) for x in server.get("args", [])),
-             "[%s.duti-mcp.env]" % table]
+             "[%s.memory-hub.env]" % table]
     for k, v in (server.get("env") or {}).items():
         block.append("%s = %s" % (k, json.dumps(v)))
     block.append("")

@@ -11,7 +11,7 @@
   三个 skill 的初始版本。
 - 宿主适配表 `skills/memory-hub-setup/scripts/adapters.json`，覆盖 Claude Code、ZCode、Codex、
   TRAE（国际版 / CN / SOLO）、WorkBuddy、Qoder、opencode、MiniMax Code，并登记验证状态与证据来源。
-- `MEMORY_HUB_ROOT` 环境变量，用于指定中台数据根目录（缺省为 `~/DutiMemory`）。
+- `MEMORY_HUB_ROOT` 环境变量，用于指定中台数据根目录（缺省为 `~/MemoryHub`）。
 - agent-plugins.org 1.0.0 插件清单（plugin.json）。
 - GitHub Actions 流水线：Python 语法编译检查、单元测试与 JSON 文件校验。
 - `search.py --json` 参数，以 JSON 输出结构化检索结果。
@@ -26,3 +26,11 @@
 - ZCode 形态安装不再覆盖用户已显式设置的 `hooks.enabled` 与 `timeoutMs`。
 - SQLite 只读连接改用 pathlib 生成的规范 `file:///` URI，兼容 Windows 盘符路径。
 - TOML `args` 数组解析支持引号转义与含逗号的字符串值。
+
+### Changed
+
+- 运行时契约改为中性命名：环境变量 `MEMORY_HUB_ROOT`、`MEMORY_HUB_CLIENT_ID`、
+  `MEMORY_HUB_ITEM_COUNT`、`MEMORY_HUB_ZCODE_DB`；MCP server 键名 `memory-hub`；
+  管理端端点文件 `.state/app.json`；默认数据根 `~/MemoryHub`。
+  本插件由执务Studio演化而来，早期实现带有执务（duti）的产品标识；作为独立开源项目分发，
+  契约命名不保留来源产品的品牌。与执务Studio配套使用时，管理端需同步采用新命名。

@@ -77,7 +77,7 @@ flowchart LR
 
 ### 数据结构（ER）
 
-中台目录树（根目录默认 `~/DutiMemory`，可用 `MEMORY_HUB_ROOT` 环境变量指向任意位置）：
+中台目录树（根目录默认 `~/MemoryHub`，可用 `MEMORY_HUB_ROOT` 环境变量指向任意位置）：
 
 ```text
 <记忆根目录>/
@@ -177,7 +177,7 @@ python3 memory-hub-plugin/skills/memory-hub-setup/scripts/setup.py --client clau
 
 然后把 `skills/` 下三个目录注册为你宿主的 skill（按各宿主的 skills 目录约定复制或软链）。重启宿主后，Stop 钩子即开始自动沉淀会话；记忆/规则的导出与检索由 agent 按各 SKILL.md 的指令执行。
 
-**存储位置**：默认为 `~/DutiMemory`；设置环境变量 `MEMORY_HUB_ROOT` 可指向任意目录。
+**存储位置**：默认为 `~/MemoryHub`；设置环境变量 `MEMORY_HUB_ROOT` 可指向任意目录。
 
 ## 其他客户端如何接入
 
