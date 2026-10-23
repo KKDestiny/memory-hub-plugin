@@ -20,10 +20,15 @@ import unicodedata
 
 
 def normalize_project_path(project_path):
-    """项目路径归一化（与管理端 normalizeProjectPath 规则一致）。"""
-    raw = os.path.abspath(str(project_path or "").strip())
+    """项目路径归一化（与管理端 normalizeProjectPath 规则一致）。
+
+    空输入返回空串：os.path.abspath("") 会返回当前目录，若不先行拦截，
+    空的项目路径会被静默归属到调用方工作目录对应的分区。
+    """
+    raw = str(project_path or "").strip()
     if not raw:
         return ""
+    raw = os.path.abspath(raw)
     try:
         abs_path = os.path.realpath(raw)
     except OSError:

@@ -17,8 +17,8 @@
     对已存在的条目同样补齐或校正（written 为 "updated"）。宿主在 MCP 握手中自报的名称不受本工具
     控制，只有注入的标识才能保证导出目录 clients/<id>/ 与连接侧的授权记录指向同一客户端。
   * 客户端标识以中台登记为准：--client 传入的是宿主 id（适配表的键），实际写入配置的标识从中台
-    .state/client-ids.json 的映射表解析；映射表不存在或未命中时使用宿主 id。配置中已有的标识与
-    映射表不一致时，改写为映射表中的标识。
+    .state/client-ids.json 的映射表解析；映射表不存在或未命中时使用宿主 id。归属本客户端的既有
+    条目，其标识与映射值不一致时改写为映射值；其他客户端的条目保持原样并报告冲突。
 
 退出码：0 成功（含跳过）；3 未识别的客户端；4 配置损坏或写入失败。
 """
@@ -33,6 +33,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ADAPTERS_FILE = os.path.join(HERE, "adapters.json")
 with open(ADAPTERS_FILE, encoding="utf-8") as _f:
     ADAPTERS = json.load(_f)
+# adapters.json 顶层的 _meta 是适配表自身的说明元数据，不是宿主条目，加载时剥离
+ADAPTERS_META = ADAPTERS.pop("_meta", {})
 
 HOOK_MARKER = "memory_hub_hook"  # 钩子条目的去重标记：同一配置重复写入时据此识别自身条目
 CLIENT_ARG = "--client"          # 注入 MCP 配置的客户端标识参数名（与 MCP server 的解析规则一致）
@@ -117,12 +119,12 @@ def has_hook(entry):
     return HOOK_MARKER in json.dumps(entry)
 
 
-def fix_client_arg(obj, client):
-    """将配置中已有的钩子命令的 --client 参数校正为中台登记的标识，返回是否有改动。
+def fix_entry_client(obj, client):
+    """将单个钩子条目命令中的 --client 参数校正为中台登记的标识，返回是否有改动。
 
     钩子在宿主配置中以命令字符串形式存储。用户在中台侧修改标识后，若不在此处校正，
-    钩子会继续按旧标识导出，中台会持续出现旧标识的目录。只修改包含 memory_hub_hook
-    标记的命令字符串，不改动其他内容。
+    钩子会继续按旧标识导出。仅处理包含 memory_hub_hook 标记的命令字符串，且仅用于
+    归属本客户端的条目；其他客户端的条目由调用方报告冲突，不做修改。
     """
     if isinstance(obj, dict):
         items = list(obj.items())
@@ -139,23 +141,52 @@ def fix_client_arg(obj, client):
                     obj[k] = new
                     changed = True
         elif isinstance(v, (dict, list)):
-            changed = fix_client_arg(v, client) or changed
+            changed = fix_entry_client(v, client) or changed
     return changed
 
 
-def merge_hooks(cfg, adapter, client):
-    """按适配表的结构写入钩子。返回 (配置, 已写入事件, 已存在事件, 冲突列表, 标识是否被校正)。"""
+def merge_hooks(cfg, adapter, client, resolve=None):
+    """按适配表的结构写入钩子。返回 (配置, 已写入事件, 已存在事件, 冲突列表, 标识是否被校正)。
+
+    同一 hooks 文件可能被多个宿主共用（如 ~/.trae/hooks.json）：先判定已安装钩子的归属，
+    仅对归属同一客户端的条目做标识校正；其他客户端的条目保持原样并报告冲突。
+    resolve 用于将命令中的客户端标识映射到规范标识，缺省使用中台登记表 canonical_client；
+    测试可注入恒等映射以隔离环境。
+    """
+    if resolve is None:
+        resolve = canonical_client
     spec = adapter["hooks"]
     events = spec["events"]
     written, skipped, conflicts = [], [], []
-    id_fixed = fix_client_arg(cfg, client)
+    id_fixed = False
+
+    def merge_event(name, arr, handler_extra):
+        nonlocal id_fixed
+        owner = next((hook_client_of(x) for x in arr if has_hook(x)), "")
+        if owner and owner != "unknown" and resolve(owner) != client:
+            conflicts.append("%s: 已存在属于客户端 %s 的钩子；该 hooks 文件由多个宿主共用，同一事件只能安装一个钩子" % (name, owner))
+            return
+        for entry in arr:
+            if has_hook(entry):
+                id_fixed = fix_entry_client(entry, client) or id_fixed
+        if owner:
+            skipped.append(name)
+            return
+        handler = {"type": "command", "command": hook_cmd(client, name)}
+        handler.update(handler_extra)
+        if spec["timeoutPlacement"] == "handler-seconds":
+            handler["timeout"] = int(spec["timeout"])
+        arr.append({"hooks": [handler]})
+        written.append(name)
+
     if spec["shape"] == "zcode":
         hooks = cfg.get("hooks")
         if not isinstance(hooks, dict):
             hooks = {}
-        hooks["enabled"] = True
+        # 仅在字段缺失时写默认值，不覆盖用户已显式设置的开关与超时
+        hooks.setdefault("enabled", True)
         if spec["timeoutPlacement"] == "root-ms":
-            hooks["timeoutMs"] = int(spec["timeout"])
+            hooks.setdefault("timeoutMs", int(spec["timeout"]))
         ev = hooks.get("events")
         if not isinstance(ev, dict):
             ev = {}
@@ -163,12 +194,8 @@ def merge_hooks(cfg, adapter, client):
             arr = ev.get(name)
             if not isinstance(arr, list):
                 arr = []
-            if any(has_hook(x) for x in arr):
-                skipped.append(name)
-                continue
-            arr.append({"hooks": [{"type": "command", "command": hook_cmd(client, name), "enabled": True}]})
+            merge_event(name, arr, {"enabled": True})
             ev[name] = arr
-            written.append(name)
         hooks["events"] = ev
         cfg["hooks"] = hooks
         return cfg, written, skipped, conflicts, id_fixed
@@ -182,19 +209,8 @@ def merge_hooks(cfg, adapter, client):
         arr = hooks.get(name)
         if not isinstance(arr, list):
             arr = []
-        owner = next((hook_client_of(x) for x in arr if has_hook(x)), "")
-        if owner:
-            if owner == client:
-                skipped.append(name)
-            else:
-                conflicts.append("%s: 已存在属于客户端 %s 的钩子；该 hooks 文件由多个宿主共用，同一事件只能安装一个钩子" % (name, owner))
-            continue
-        handler = {"type": "command", "command": hook_cmd(client, name)}
-        if spec["timeoutPlacement"] == "handler-seconds":
-            handler["timeout"] = int(spec["timeout"])
-        arr.append({"hooks": [handler]})
+        merge_event(name, arr, {})
         hooks[name] = arr
-        written.append(name)
     cfg["hooks"] = hooks
     return cfg, written, skipped, conflicts, id_fixed
 
@@ -292,6 +308,42 @@ def merge_mcp_json(cfg, adapter, client):
     return cfg, "created"
 
 
+def parse_toml_string_array(body):
+    """解析 TOML 字符串数组的元素值，支持双引号、单引号与反斜杠转义（含逗号的字符串不会被拆分）。
+    body 为方括号内的文本；本工具写入的 args 元素均为字符串。"""
+    values = []
+    current = []
+    quote = ""
+    escaped = False
+
+    def flush():
+        text = "".join(current).strip()
+        if text:
+            values.append(text)
+        del current[:]
+
+    for ch in body:
+        if quote:
+            if escaped:
+                current.append(ch)
+                escaped = False
+            elif ch == "\\":
+                current.append(ch)
+                escaped = True
+            elif ch == quote:
+                quote = ""
+            else:
+                current.append(ch)
+        elif ch in "\"'":
+            quote = ch
+        elif ch == ",":
+            flush()
+        else:
+            current.append(ch)
+    flush()
+    return values
+
+
 def patch_toml_client(text, client, table):
     """校正 TOML 配置中已存在的条目（Codex）：在 args 数组中补齐或校正 --client，
     在 env 表中补齐或校正 DUTI_CLIENT_ID。返回 (文本, 是否有改动)。
@@ -304,28 +356,36 @@ def patch_toml_client(text, client, table):
     if marker_i < 0:
         return text, False
     changed = False
+    # args 行位于本工具写入的表头 [table.duti-mcp] 之后、下一个表头之前；
+    # 表头本身以 "[" 开头，扫描必须先定位表头再读取 args，不能见到 "[" 就终止
+    table_head = "[%s.duti-mcp]" % table
     args_i = -1
+    seen_table = False
     for i in range(marker_i, len(lines)):
         s = lines[i].strip()
-        if i > marker_i and s.startswith("["):
-            break
+        if not seen_table:
+            if s == table_head:
+                seen_table = True
+            continue
         if s.startswith("args = ["):
             args_i = i
             break
+        if s.startswith("["):
+            break
     if args_i >= 0:
         cur = lines[args_i].strip()
-        body = cur[cur.find("[") + 1: cur.rfind("]")].strip()
-        vals = [v.strip() for v in body.split(",") if v.strip()] if body else []
-        j = next((i for i, v in enumerate(vals) if v in ('"--client"', "'--client'")), -1)
+        body = cur[cur.find("[") + 1: cur.rfind("]")]
+        vals = parse_toml_string_array(body)
+        j = next((i for i, v in enumerate(vals) if v == CLIENT_ARG), -1)
         if j >= 0:
-            if j + 1 < len(vals) and vals[j + 1] != json.dumps(client):
-                vals[j + 1] = json.dumps(client)
+            if j + 1 < len(vals) and vals[j + 1] != client:
+                vals[j + 1] = client
                 changed = True
         else:
-            vals += ['"--client"', json.dumps(client)]
+            vals += [CLIENT_ARG, client]
             changed = True
         if changed:
-            lines[args_i] = "args = [%s]" % ", ".join(vals)
+            lines[args_i] = "args = [%s]" % ", ".join(json.dumps(v) for v in vals)
     env_head = "[%s.duti-mcp.env]" % table
     env_i = next((i for i in range(marker_i, len(lines)) if lines[i].strip() == env_head), -1)
     if env_i >= 0:
@@ -366,7 +426,7 @@ def merge_mcp_toml(path_, adapter, client):
 
 
 def main():
-    parser = argparse.ArgumentParser(add_help=False)
+    parser = argparse.ArgumentParser(description="按宿主已验证的配置契约，幂等地写入钩子与 MCP 配置。")
     parser.add_argument("--client")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--list", action="store_true")

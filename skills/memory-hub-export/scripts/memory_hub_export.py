@@ -36,6 +36,7 @@ if not os.path.isfile(os.path.join(_SHARED, "project_id.py")):
     raise SystemExit("缺少 skills/_shared/project_id.py：请整包安装（skills/ 目录需保持完整）")
 sys.path.insert(0, _SHARED)
 from project_id import normalize_project_path, project_slug  # noqa: E402
+from redact import redact  # noqa: E402
 
 HOME = os.path.expanduser("~")
 ROOT = os.environ.get("MEMORY_HUB_ROOT") or os.environ.get("DUTI_MEMORY_ROOT") or os.path.join(HOME, "DutiMemory")
@@ -112,26 +113,6 @@ def summarize_turns(turns_file):
         parts.append("结论：%s" % clip(last.get("assistant"), 100))
     parts.append("轮次：%d" % len(turns))
     return "；".join(parts)
-
-
-REDACT_TOKEN = re.compile(r"\b(?:sk|pk|ghp|gho|ghs|xox[baprs])[-_][A-Za-z0-9_-]{16,}\b")
-REDACT_KV = re.compile(r"((?:api[_-]?key|token|secret|password|passwd|pwd)\s*[:=]\s*)[\"']?[^\s\"',;]{6,}", re.I)
-REDACT_BLOB = re.compile(r"[A-Za-z0-9+/]{48,}={0,2}")
-
-
-def redact(text):
-    """对文本执行脱敏：已知前缀的令牌、键值对形式的凭据、长随机串统一替换为 [REDACTED]。
-    返回 (脱敏后的文本, 替换次数)。"""
-    hits = [0]
-
-    def sub(_match):  # 替换回调必须接收 match 参数，否则 re.sub 调用时抛出 TypeError
-        hits[0] += 1
-        return "[REDACTED]"
-
-    out = REDACT_TOKEN.sub(sub, text)
-    out = REDACT_KV.sub(lambda m: m.group(1) + "[REDACTED]", out)
-    out = REDACT_BLOB.sub(sub, out)
-    return out, hits[0]
 
 
 def clip(text, limit):
@@ -234,7 +215,7 @@ def collect_dir(src_dir, kind, project, pattern):
 
 
 def main():
-    parser = argparse.ArgumentParser(add_help=False)
+    parser = argparse.ArgumentParser(description="把本客户端的记忆、规则、工作流与会话导出到共享记忆中台。")
     parser.add_argument("--client", required=True)
     parser.add_argument("--kind", required=True, choices=["memory", "rule", "session", "workflow"])
     parser.add_argument("--text-file")

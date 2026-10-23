@@ -10,10 +10,10 @@ description: Search the shared memory hub read-only for memories/rules/session d
 ## 步骤
 1. 先读取中台根目录下的 `index/catalog.json`（不超过 2KB 的导航文件，由可选管理端聚合生成；
    不存在时跳过此步）——查看有哪些来源客户端与项目分区；也可读取 `index/digest.md` 查看总摘要。
-2. 需要具体内容时运行检索脚本（直接扫描文件，无需管理端在线）：
+2. 需要具体内容时运行检索脚本（直接扫描文件，无需管理端在线；`--json` 输出结构化结果，便于程序处理）：
 
    ```bash
-   python3 skills/memory-hub-consume/scripts/search.py "<关键词>" [--scope project|global] [--client <id>] [--kind memory|rule|session]
+   python3 skills/memory-hub-consume/scripts/search.py "<关键词>" [--scope project|global] [--client <id>] [--kind memory|rule|session] [--json]
    ```
 
 3. 按需读取命中文件的全文（单文件过长时只读前 4000 字）。

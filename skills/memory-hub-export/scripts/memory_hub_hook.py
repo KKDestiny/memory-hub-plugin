@@ -10,6 +10,8 @@
     minimax-code（cwd 仅在 SessionStart 事件提供）
 无可用输入时不静默跳过：把跳过原因追加到 .state/<client>-hook.jsonl 并输出到 stderr，
 退出码保持 0（Claude Code 与 ZCode 系宿主将退出码 2 视为阻断，跳过场景不得使用该值）。
+HTTP 上行与文件通道在发送前执行相同的脱敏（skills/_shared/redact.py）；脱敏模块缺失时
+跳过 HTTP，直接走文件通道（导出脚本内置脱敏）。
 """
 import json
 import os
@@ -26,6 +28,12 @@ try:
     from project_id import project_slug
 except Exception:
     project_slug = None
+try:
+    from redact import redact, redact_turns
+except Exception:
+    # 脱敏模块缺失时不经 HTTP 发送内容，改走文件通道（导出脚本内置脱敏）
+    redact = None
+    redact_turns = None
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.environ.get("MEMORY_HUB_ROOT") or os.environ.get("DUTI_MEMORY_ROOT") or os.path.join(os.path.expanduser("~"), "DutiMemory")
@@ -136,15 +144,27 @@ def build_turns_from_transcript(path_):
     return turns
 
 
+def connect_ro(db_path, timeout=None):
+    """以只读模式打开 SQLite 数据库。URI 由 pathlib 生成（file:///绝对路径），
+    兼容 Windows 盘符与含特殊字符的路径；query 参数启用 SQLite 的只读模式。"""
+    import pathlib
+    import sqlite3
+    uri = pathlib.Path(db_path).absolute().as_uri() + "?mode=ro"
+    if timeout is not None:
+        con = sqlite3.connect(uri, uri=True, timeout=timeout)
+    else:
+        con = sqlite3.connect(uri, uri=True)
+    con.row_factory = sqlite3.Row
+    return con
+
+
 def read_zcode_turns(session_id, db_path=None):
     """只读增量读取 ZCode 的私有会话数据库：message 与 part 两表 → 逐轮全文。返回 (轮次列表, 最大 rowid)。"""
-    import sqlite3
     db_path = db_path or os.environ.get("DUTI_ZCODE_DB") or os.path.join(os.path.expanduser("~"), ".zcode", "cli", "db", "db.sqlite")
     if not os.path.exists(db_path):
         return [], 0
     try:
-        con = sqlite3.connect("file:%s?mode=ro" % db_path, uri=True)
-        con.row_factory = sqlite3.Row
+        con = connect_ro(db_path)
     except Exception:
         return [], 0
     try:
@@ -227,12 +247,10 @@ def zcode_db_path():
 
 def list_zcode_sessions():
     """枚举 ZCode 的全部顶层会话（只读打开其数据库，不限制时间范围）。"""
-    import sqlite3
     db_path = zcode_db_path()
     if not os.path.exists(db_path):
         return []
-    con = sqlite3.connect("file:%s?mode=ro" % db_path, uri=True)
-    con.row_factory = sqlite3.Row
+    con = connect_ro(db_path)
     try:
         rows = con.execute("SELECT id, title, directory, time_updated FROM session WHERE parent_id IS NULL ORDER BY time_updated DESC").fetchall()
         return [{"sid": str(r["id"]), "title": str(r["title"] or ""), "cwd": str(r["directory"] or ""), "updated": int(r["time_updated"] or 0)} for r in rows]
@@ -258,33 +276,46 @@ def list_jsonl_files(root):
     return out
 
 
+_HTTP_DISABLED = False  # 批量导入时 HTTP 通道首次失败后置为 True，其余会话直接走文件通道，避免逐场等待超时
+
+
 def emit_session(client, session_id, cwd, turns, summary="", title="", cursor=0):
     """把一场会话写入中台。优先使用 HTTP（管理端在线时）；失败时回退到文件通道
-    （调用自身的导出脚本）。返回是否成功。"""
+    （调用自身的导出脚本）。返回是否成功。
+
+    HTTP 载荷在发送前执行与文件通道相同的脱敏；脱敏模块缺失时直接走文件通道。
+    """
+    global _HTTP_DISABLED
     if not turns:
         return False
     summary = summary or turns_summary(turns)
     body = fmt_turns(turns)
     cursor = int(cursor or 0) or len(turns)
-    try:
-        state_file = os.path.join(ROOT, ".state", "duti-app.json")
-        endpoint = json.load(open(state_file, encoding="utf-8"))
-        import urllib.request
-        payload = {"client": client, "kind": "session", "scope": "project" if cwd else "global",
-                   "project": cwd or "", "session": session_id, "summary": summary, "body": body,
-                   "format": 2, "turns": turns, "turnCount": len(turns), "bytes": turns_bytes(turns), "cursor": cursor}
-        if title:
-            payload["title"] = title
-        req = urllib.request.Request(
-            endpoint["endpoint"].rstrip("/") + "/xmem/report",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json", "Authorization": "Bearer " + endpoint.get("token", "")},
-            method="POST", timeout=30)
-        with urllib.request.urlopen(req) as resp:
-            if 200 <= resp.status < 300:
-                return True
-    except Exception:
-        pass
+    if redact is not None and not _HTTP_DISABLED:
+        try:
+            state_file = os.path.join(ROOT, ".state", "duti-app.json")
+            endpoint = json.load(open(state_file, encoding="utf-8"))
+            import urllib.request
+            http_summary, _ = redact(summary)
+            http_body, _ = redact(body)
+            http_turns, _ = redact_turns(turns)
+            payload = {"client": client, "kind": "session", "scope": "project" if cwd else "global",
+                       "project": cwd or "", "session": session_id, "summary": http_summary, "body": http_body,
+                       "format": 2, "turns": http_turns, "turnCount": len(http_turns),
+                       "bytes": turns_bytes(http_turns), "cursor": cursor}
+            if title:
+                payload["title"] = title
+            req = urllib.request.Request(
+                endpoint["endpoint"].rstrip("/") + "/xmem/report",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json", "Authorization": "Bearer " + endpoint.get("token", "")},
+                method="POST", timeout=30)
+            with urllib.request.urlopen(req) as resp:
+                if 200 <= resp.status < 300:
+                    return True
+            _HTTP_DISABLED = True
+        except Exception:
+            _HTTP_DISABLED = True
     try:
         state_dir = os.path.join(ROOT, ".state")
         os.makedirs(state_dir, exist_ok=True)
@@ -465,8 +496,7 @@ def host_session_title(client, session_id):
     if not os.path.exists(db):
         return ""
     try:
-        import sqlite3
-        con = sqlite3.connect("file:%s?mode=ro" % db, uri=True, timeout=2)
+        con = connect_ro(db, timeout=2)
         try:
             row = con.execute("select title from session where id = ? limit 1", (session_id,)).fetchone()
         finally:
@@ -580,22 +610,24 @@ def main():
         args += ["--project", cwd]
     if title:
         args += ["--title", title]
-    try:
-        state_file = os.path.join(ROOT, ".state", "duti-app.json")
-        endpoint = json.load(open(state_file, encoding="utf-8"))
-        import urllib.request
-        payload_out = {"client": client, "kind": "session", "scope": "project" if cwd else "global",
-                       "project": cwd or "", "session": session_id, "summary": summary or "", "body": summary or ""}
-        req = urllib.request.Request(
-            endpoint["endpoint"].rstrip("/") + "/xmem/report",
-            data=json.dumps(payload_out).encode("utf-8"),
-            headers={"Content-Type": "application/json", "Authorization": "Bearer " + endpoint.get("token", "")},
-            method="POST", timeout=15)
-        with urllib.request.urlopen(req) as resp:
-            if 200 <= resp.status < 300:
-                return 0
-    except Exception:
-        pass
+    if redact is not None:
+        try:
+            http_summary, _ = redact(summary or "")
+            state_file = os.path.join(ROOT, ".state", "duti-app.json")
+            endpoint = json.load(open(state_file, encoding="utf-8"))
+            import urllib.request
+            payload_out = {"client": client, "kind": "session", "scope": "project" if cwd else "global",
+                           "project": cwd or "", "session": session_id, "summary": http_summary, "body": http_summary}
+            req = urllib.request.Request(
+                endpoint["endpoint"].rstrip("/") + "/xmem/report",
+                data=json.dumps(payload_out).encode("utf-8"),
+                headers={"Content-Type": "application/json", "Authorization": "Bearer " + endpoint.get("token", "")},
+                method="POST", timeout=15)
+            with urllib.request.urlopen(req) as resp:
+                if 200 <= resp.status < 300:
+                    return 0
+        except Exception:
+            pass
     result = subprocess.run(args, capture_output=True, text=True)
     if result.returncode != 0:
         note_skip(client, event, "导出脚本执行失败：%s" % clip(result.stdout or result.stderr, 200), session_id)
