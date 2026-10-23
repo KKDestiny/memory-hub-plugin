@@ -1,0 +1,9 @@
+{
+  "name": "memory-hub-plugin",
+  "version": "0.1.0",
+  "description": "跨客户端共享记忆中台：接入装配、上行导出（聚合+脱敏+增量）、下行只读检索。",
+  "author": {
+    "name": "KKDestiny"
+  },
+  "skills": "skills"
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "memory-hub-plugin",
+  "version": "0.1.0",
+  "description": "Cross-client shared memory hub for AI coding agents: export memories/rules/workflows/session digests (aggregate, redact, incremental) and search them read-only from any client. 跨客户端共享记忆中台：上行聚合脱敏增量导出，下行只读检索。",
+  "author": {
+    "name": "KKDestiny"
+  },
+  "keywords": [
+    "memory",
+    "skills",
+    "cross-client",
+    "sessions",
+    "agents",
+    "mcp"
+  ]
+}

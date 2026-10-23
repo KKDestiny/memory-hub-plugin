@@ -1,0 +1,313 @@
+{
+  "_meta": {
+    "description": "各 AI 编码客户端（宿主）的钩子与 MCP 配置契约。status 取值：verified-auto 表示钩子与 MCP 均已实机验证且支持自动安装；verified-manual 表示已实机验证但不支持自动安装钩子；unverified 表示依据同系列产品或文档推断，未实机验证。任何对宿主私有实现的引用都必须在此登记证据来源。",
+    "verifiedAt": "2026-09"
+  },
+  "zcode": {
+    "label": "ZCode",
+    "version": "3.14.1（macOS）",
+    "status": "verified-auto",
+    "evidence": "CLI 源码中的钩子 stdin 构造逻辑与官方 hooks 文档",
+    "hooks": {
+      "file": "~/.zcode/cli/config.json",
+      "create": true,
+      "shape": "zcode",
+      "events": ["Stop"],
+      "timeoutPlacement": "root-ms",
+      "timeout": 30000,
+      "input": {
+        "transcript": "temp-jsonl",
+        "sessionId": "session_id",
+        "cwd": "cwd",
+        "lastMessage": "last_assistant_message"
+      },
+      "note": "Stop 事件的 stdin 包含 session_id、cwd、hook_event_name；transcript_path 指向仅含最后一轮回答的临时 JSONL，钩子返回后即被删除，因此钩子必须同步执行，不可使用异步方式。完整会话需从 ZCode 的会话数据库读取。"
+    },
+    "mcp": {
+      "file": "~/.zcode/cli/config.json",
+      "format": "json",
+      "keys": ["mcp", "servers"],
+      "serverExtra": { "type": "stdio" },
+      "note": "配置 schema 为严格模式：含未知键的 server 条目会被整条忽略；type 字段必填。"
+    },
+    "sessions": "会话数据库 ~/.zcode/cli/db/db.sqlite（表 session、session_entry、message）；另有明文 rollout/model-io-sess_*.jsonl，保留时长有限",
+    "rules": "~/.zcode/AGENTS.md（用户级）与 <workspace>/AGENTS.md（含 .zcode/AGENTS.md、.agents/AGENTS.md 两个候选位置）",
+    "memories": "~/.zcode/cli/memories/*.md（全局）与 memories/projects/<目录名-hash16>/memory/（项目级，明文）",
+    "autoExport": true,
+    "autoNote": "Stop 事件可自动导出会话摘要（最后一轮回答级）；完整会话需手动导出或从会话数据库读取。"
+  },
+  "claude-code": {
+    "label": "Claude Code",
+    "version": "2.1.144（macOS）",
+    "status": "verified-auto",
+    "evidence": "本地 settings.json 实例、CLI 内置的钩子 schema 与官方 hooks 文档",
+    "hooks": {
+      "file": "~/.claude/settings.json",
+      "create": true,
+      "shape": "flat",
+      "events": ["Stop"],
+      "timeoutPlacement": "handler-seconds",
+      "timeout": 30,
+      "input": {
+        "transcript": "jsonl",
+        "sessionId": "session_id",
+        "cwd": "cwd",
+        "lastMessage": "last_assistant_message"
+      },
+      "note": "stdin 包含 session_id、transcript_path、cwd；transcript_path 指向 ~/.claude/projects/<slug>/<uuid>.jsonl 的完整明文转录。"
+    },
+    "mcp": {
+      "file": "~/.claude.json",
+      "format": "json",
+      "keys": ["mcpServers"],
+      "serverExtra": {},
+      "note": "用户级 MCP 配置位于 ~/.claude.json 顶层的 mcpServers；项目级配置位于 <repo>/.mcp.json。"
+    },
+    "sessions": "~/.claude/projects/<cwd-slug>/<session-uuid>.jsonl（明文 JSONL）",
+    "rules": "~/.claude/CLAUDE.md 与 <repo>/CLAUDE.md（该产品使用 CLAUDE.md 而非 AGENTS.md）",
+    "memories": "~/.claude/projects/<cwd-slug>/memory/*.md 与 MEMORY.md",
+    "autoExport": true,
+    "autoNote": "Stop 事件可自动导出完整会话（transcript_path 为完整转录）。"
+  },
+  "codex": {
+    "label": "Codex（OpenAI Codex CLI）",
+    "version": "0.155.1（发行包静态分析，未实机验证）",
+    "status": "unverified",
+    "evidence": "~/.codex/config.toml 实例与 @openai/codex 0.155.1 发行包的静态分析；钩子配置表的嵌套结构未能确认",
+    "hooks": null,
+    "hooksNote": "已确认钩子事件枚举（12 个，与 Claude Code 同构）与 stdin 字段（session_id、transcript_path、turn_id 等），但 config.toml 中 hooks 表的嵌套结构未经实机验证，因此当前不自动安装钩子，仅安装 MCP。",
+    "mcp": {
+      "file": "~/.codex/config.toml",
+      "format": "toml",
+      "table": "mcp_servers",
+      "note": "TOML 表 mcp_servers.<name>；采用标记注释加幂等追加的方式写入。"
+    },
+    "sessions": "未确认；发行包中存在 rollout-*.jsonl、.jsonl.zst 与 history.jsonl 等文件名线索",
+    "rules": "AGENTS.md（具体查找路径未确认）",
+    "memories": "~/.codex/memories_1.sqlite（私有 SQLite）",
+    "autoExport": false,
+    "autoNote": "钩子结构未确认，当前需手动导出；MCP 可自动接入。"
+  },
+  "opencode": {
+    "label": "opencode",
+    "version": "1.14.28（依据插件类型定义与官方文档）",
+    "status": "verified-manual",
+    "evidence": "@opencode-ai/plugin 1.14.28 的类型定义（dist/index.d.ts）与官方文档",
+    "hooks": null,
+    "hooksNote": "opencode 不提供 shell 钩子：其 Hook 为进程内 TypeScript 插件回调（event、tool.execute.before 等），无 stdin JSON 契约与 transcript_path，因此不支持自动导出，需手动导出。",
+    "mcp": {
+      "file": "~/.config/opencode/opencode.json",
+      "format": "json",
+      "keys": ["mcp"],
+      "shape": "opencode",
+      "note": "顶层键为 mcp（而非 mcpServers）；本地 server 形如 {type: \"local\", command: [...]}，command 为数组。"
+    },
+    "sessions": "~/.local/share/opencode/opencode.db（私有 SQLite，表 session、message、part）",
+    "rules": "AGENTS.md 与 opencode.json 的 instructions 字段（未逐项确认）",
+    "memories": "未确认",
+    "autoExport": false,
+    "autoNote": "无 shell 钩子机制，需手动导出；MCP 可自动接入。"
+  },
+  "trae": {
+    "label": "TRAE（国际版）",
+    "version": "未实机验证（依据同系列产品与官方文档推断）",
+    "status": "unverified",
+    "evidence": "由同系列 TRAE CN / TRAE SOLO CN 的宿主实现与 docs.trae.ai 的六事件文档推断；国际版本体未验证",
+    "hooks": {
+      "file": "~/.trae/hooks.json",
+      "create": false,
+      "shape": "trae",
+      "rootExtra": { "version": 1 },
+      "events": ["Stop"],
+      "timeoutPlacement": "handler-seconds",
+      "timeout": 30,
+      "input": {
+        "transcript": null,
+        "sessionId": "session_id",
+        "cwd": "cwd",
+        "lastMessage": "last_assistant_message"
+      },
+      "note": "钩子 stdin 不含 transcript_path（同系列实现与官方文档均无此字段），仅可获取 session_id、cwd、last_assistant_message；hooks.json 不存在时不创建，避免在未初始化的环境中猜测路径。"
+    },
+    "mcp": {
+      "file": "~/Library/Application Support/Trae/User/mcp.json",
+      "format": "json",
+      "keys": ["mcpServers"],
+      "serverExtra": {},
+      "note": "路径按同系列约定（<userData>/User/mcp.json）推断，未实机验证。"
+    },
+    "sessions": "未确认（同系列为私有 SQLite，明文侧仅有记忆 JSONL）",
+    "rules": "未确认（同系列不使用 AGENTS.md 或 .trae/rules 文件）",
+    "memories": "未确认",
+    "autoExport": false,
+    "autoNote": "可安装钩子但无转录，仅能导出最后一轮回答级摘要；未实机验证。"
+  },
+  "trae-cn": {
+    "label": "TRAE CN",
+    "version": "3.3.103（macOS）",
+    "status": "verified-manual",
+    "evidence": "宿主二进制中的事件枚举与 docs.trae.ai 的六事件文档；hooks.json 在默认安装下不存在",
+    "hooks": {
+      "file": "~/.trae/hooks.json",
+      "create": true,
+      "shape": "trae",
+      "rootExtra": { "version": 1 },
+      "events": ["Stop"],
+      "timeoutPlacement": "handler-seconds",
+      "timeout": 30,
+      "input": {
+        "transcript": null,
+        "sessionId": "session_id",
+        "cwd": "cwd",
+        "lastMessage": "last_assistant_message"
+      },
+      "note": "支持 6 个事件（SessionStart、UserPromptSubmit、PreToolUse、PostToolUse、Stop、Notification）；实现中另有未文档化的 PreCompact / PostCompact，不使用；SessionEnd 不属于用户钩子事件，不使用；stdin 不含 transcript_path。"
+    },
+    "mcp": {
+      "file": "~/Library/Application Support/Trae CN/User/mcp.json",
+      "format": "json",
+      "keys": ["mcpServers"],
+      "serverExtra": {},
+      "note": "schema 为严格模式：仅允许 command、args、env、cwd、disabled 或 url、headers、oauth；额外的 type 字段会导致条目被拒绝。"
+    },
+    "sessions": "私有 SQLite（表 chat_session、chat_message、chat_turn，数据库路径未确认）；明文侧为 ~/.trae-cn/memory/projects/<slug>/<YYYYMMDD>/session_memory_*.jsonl",
+    "rules": "规则不以文件形式存储，由服务端承载（RuleEntry / RuleDetail）",
+    "memories": "~/.trae-cn/memory/user_profile.md（全局）与 memory/projects/<slug>/project_memory.md（项目级），明文",
+    "autoExport": false,
+    "autoNote": "钩子不提供转录，自动导出仅为最后一轮回答级摘要；完整会话需手动导出（明文 session_memory JSONL 可作为后续直读来源）。"
+  },
+  "trae-work": {
+    "label": "TRAE SOLO CN（TRAE Work）",
+    "version": "0.1.65（macOS）",
+    "status": "verified-manual",
+    "evidence": "宿主二进制的独立核对（含 .trae/hooks.json、CLAUDE_PROJECT_DIR、settings.local.json 等引用）",
+    "hooks": {
+      "file": "~/.trae/hooks.json",
+      "create": true,
+      "shape": "trae",
+      "rootExtra": { "version": 1 },
+      "events": ["Stop"],
+      "timeoutPlacement": "handler-seconds",
+      "timeout": 30,
+      "sharedHooksWith": "trae-cn",
+      "input": {
+        "transcript": null,
+        "sessionId": "session_id",
+        "cwd": "cwd",
+        "lastMessage": "last_assistant_message"
+      },
+      "note": "与 TRAE CN 共用数据目录 ~/.trae-cn 与全局钩子文件 ~/.trae/hooks.json（同一宿主实现系列）。"
+    },
+    "mcp": {
+      "file": "~/Library/Application Support/TRAE SOLO CN/User/mcp.json",
+      "format": "json",
+      "keys": ["mcpServers"],
+      "serverExtra": {},
+      "note": "用户数据目录与 TRAE CN 不同，配置 schema 相同。"
+    },
+    "sessions": "私有 SQLite（未确认）；明文侧与 TRAE CN 共用 ~/.trae-cn/memory/",
+    "rules": "规则不以文件形式存储（同 TRAE CN）",
+    "memories": "~/.trae-cn/memory/（与 TRAE CN 共用）",
+    "autoExport": false,
+    "autoNote": "同 TRAE CN：钩子不提供转录，自动导出仅为最后一轮回答级摘要。"
+  },
+  "qoder": {
+    "label": "Qoder",
+    "version": "CLI 1.1.40 / 应用 0.1.6（macOS）",
+    "status": "verified-manual",
+    "evidence": "运行日志中记录的钩子 stdin JSON、插件 hooks.json 实例与 docs.qoder.com 的 hooks 文档",
+    "hooks": {
+      "file": "~/.qoder/settings.json",
+      "create": true,
+      "shape": "flat",
+      "events": ["Stop"],
+      "timeoutPlacement": "handler-seconds",
+      "timeout": 30,
+      "input": {
+        "transcript": "jsonl",
+        "sessionId": "session_id",
+        "cwd": "cwd",
+        "lastMessage": null
+      },
+      "note": "stdin 包含 session_id、transcript_path、cwd、hook_event_name、model、permission_mode；转录位于 ~/.qoder/projects/<slug>/<session>.jsonl（明文）。"
+    },
+    "mcp": {
+      "file": "~/.qoder/settings.json",
+      "format": "json",
+      "keys": ["mcpServers"],
+      "serverExtra": {},
+      "note": "settings.json 顶层 mcpServers；项目级 .mcp.json 需逐个批准（可通过 mcp.enableAllProjectMcpServers 放行）。"
+    },
+    "sessions": "~/.qoder/projects/<slug>/<session-id>.jsonl（明文 JSONL）；文档中另提到 transcript/ 子目录，实测环境中未出现，读取时应同时探测两种路径",
+    "rules": "未确认（文档中有 IDE → Rules 入口，文件路径未确认）",
+    "memories": "~/.qoder/memory/ 与 projects/<slug>/memory/",
+    "autoExport": true,
+    "autoNote": "Stop 事件可自动导出完整会话（transcript_path 为完整转录）。"
+  },
+  "workbuddy": {
+    "label": "WorkBuddy",
+    "version": "5.5.6（macOS；基于 CodeBuddy Code）",
+    "status": "verified-auto",
+    "evidence": "应用内置的 hooks 文档、配置目录解析逻辑（getWorkbuddyConfigDir、resolveMcpFilePath）与 ~/.workbuddy 实际目录结构",
+    "hooks": {
+      "file": "~/.workbuddy/settings.json",
+      "create": true,
+      "shape": "flat",
+      "events": ["Stop"],
+      "timeoutPlacement": "handler-seconds",
+      "timeout": 30,
+      "input": {
+        "transcript": "jsonl",
+        "sessionId": "session_id",
+        "cwd": "cwd",
+        "lastMessage": null
+      },
+      "note": "文档描述的配置路径为 ~/.codebuddy/settings.json，但桌面版实际解析为 ~/.workbuddy（CODEBUDDY_CONFIG_DIR 亦被重定向），因此必须写入 ~/.workbuddy/settings.json；stdin 包含 session_id、transcript_path、cwd。"
+    },
+    "mcp": {
+      "file": "~/.workbuddy/mcp.json",
+      "format": "json",
+      "keys": ["mcpServers"],
+      "serverExtra": { "type": "stdio" },
+      "note": "用户级配置的探测顺序为 ~/.workbuddy/.mcp.json、~/.workbuddy/mcp.json，实际使用后者。"
+    },
+    "sessions": "~/.workbuddy/projects/<编码后的 cwd>/<session-uuid>.jsonl（明文 JSONL，即钩子的 transcript_path）与 ~/.workbuddy/sessions/<pid>.json 元数据",
+    "rules": "~/.codebuddy/rules/*.md、<proj>/.codebuddy/rules/*.md、CODEBUDDY.md 与 AGENTS.md",
+    "memories": "~/.workbuddy/MEMORY.md、USER.md 与 memory/<userId>_memory.md（明文）",
+    "autoExport": true,
+    "autoNote": "Stop 事件可自动导出完整会话（transcript_path 为完整转录）。"
+  },
+  "minimax-code": {
+    "label": "MiniMax Code",
+    "version": "3.0.67（macOS）",
+    "status": "verified-manual",
+    "evidence": "应用内置运行时的钩子配置解析源码与说明文档，以及 ~/.minimax 实际目录结构",
+    "hooks": {
+      "file": "~/.minimax/hooks/hooks.json",
+      "create": true,
+      "shape": "flat",
+      "events": ["SessionStart", "SessionEnd"],
+      "timeoutPlacement": "handler-seconds",
+      "timeout": 30,
+      "input": {
+        "transcript": null,
+        "sessionId": "sessionId（驼峰命名）",
+        "cwd": "仅 SessionStart 事件提供 workspaceDir",
+        "lastMessage": null
+      },
+      "note": "settings.json 中无 hooks 键；hooks.json 仅接受 type: \"command\"，且事件受守护进程白名单约束（不含 Stop、AgentStop），因此安装 SessionStart（记录 cwd）与 SessionEnd（触发导出）；运行时不提供 transcript_path，摘要仅能来自会话元信息。"
+    },
+    "mcp": {
+      "file": "~/.minimax/mcp.json",
+      "format": "json",
+      "keys": ["mcpServers"],
+      "serverExtra": { "type": "stdio" },
+      "note": "写入路径为 ~/.minimax/mcp.json（另有只读的发现路径 ~/.minimax/mcp/mcp.json）；stdio 传输由 command 字段隐式判定。"
+    },
+    "sessions": "私有 SQLite（表 sessions、session_messages，正文位于 data 列的 JSON 文本；数据库位于应用配置根目录下）",
+    "rules": "~/.minimax/AGENTS.md（全局指令文件）",
+    "memories": "~/.minimax/agents/<agent>/memory/MEMORY.md 与 ~/.minimax/memory/user.md（明文）",
+    "autoExport": false,
+    "autoNote": "运行时不提供转录，自动导出仅包含会话 id、时间与工作目录级别的摘要；完整会话需手动导出。"
+  }
+}

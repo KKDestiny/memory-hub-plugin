@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "memory-hub-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "跨客户端共享记忆中台插件（skills + scripts），纯 Python 标准库实现。"
+}

@@ -1,0 +1,8 @@
+.DS_Store
+node_modules/
+__pycache__/
+*.pyc
+*.log
+
+# 发布前的内部审查记录，不随仓库公开
+REVIEW.md
