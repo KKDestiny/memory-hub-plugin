@@ -188,6 +188,26 @@ python3 memory-hub-plugin/skills/memory-hub-setup/scripts/setup.py --client clau
 
 **Расположение хранилища**: по умолчанию `~/MemoryHub`; переменная окружения `MEMORY_HUB_ROOT` указывает на любой каталог.
 
+## Пример MCP-сервера
+Сопутствующий репозиторий [memory-hub-examples](https://github.com/KKDestiny/memory-hub-examples)
+содержит эталонную реализацию только читающего MCP-сервера без зависимостей и готовый демонстрационный
+хаб — MCP-канал поиска работает без управляющего приложения:
+
+```json
+{
+  "mcpServers": {
+    "memory-hub": {
+      "command": "node",
+      "args": ["/path/to/memory-hub-examples/mcp-server/memory-hub-mcp.mjs"],
+      "env": { "MEMORY_HUB_ROOT": "/path/to/memory-hub-examples/example-hub" }
+    }
+  }
+}
+```
+
+После настройки хост может вызывать инструменты `search_hub` / `read_entry` / `hub_stats` — подробности
+в README того репозитория.
+
 ## Как подключить другой клиент
 
 Подключение нового хоста = добавление одной **проверенной записи** в таблицу адаптации (`setup.py --list` показывает поля evidence существующих записей как образец):

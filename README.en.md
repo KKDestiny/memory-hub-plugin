@@ -188,6 +188,26 @@ Then register the three directories under `skills/` as your host's skills (copy 
 
 **Storage location**: defaults to `~/MemoryHub`; set the `MEMORY_HUB_ROOT` environment variable to point anywhere.
 
+## MCP Server Example
+The companion repository [memory-hub-examples](https://github.com/KKDestiny/memory-hub-examples) ships
+a zero-dependency, read-only MCP server reference implementation plus a ready-to-run sample hub, so the
+MCP retrieval channel works without the companion manager app:
+
+```json
+{
+  "mcpServers": {
+    "memory-hub": {
+      "command": "node",
+      "args": ["/path/to/memory-hub-examples/mcp-server/memory-hub-mcp.mjs"],
+      "env": { "MEMORY_HUB_ROOT": "/path/to/memory-hub-examples/example-hub" }
+    }
+  }
+}
+```
+
+Once configured, the host can call the `search_hub` / `read_entry` / `hub_stats` tools — see that
+repository's README for details.
+
 ## Adding Another Client
 
 Onboarding a new host = adding one **verified record** to the adapter table (`setup.py --list` shows the existing entries' evidence fields as examples):

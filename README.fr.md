@@ -188,6 +188,26 @@ Enregistrez ensuite les trois répertoires sous `skills/` comme skills de votre 
 
 **Emplacement de stockage** : par défaut `~/MemoryHub` ; la variable d'environnement `MEMORY_HUB_ROOT` permet de pointer vers n'importe quel répertoire.
 
+## Exemple de serveur MCP
+Le dépôt compagnon [memory-hub-examples](https://github.com/KKDestiny/memory-hub-examples) fournit une
+implémentation de référence d'un serveur MCP en lecture seule, sans dépendance, ainsi qu'un hub
+d'exemple prêt à l'emploi — le canal MCP fonctionne donc sans l'application de gestion :
+
+```json
+{
+  "mcpServers": {
+    "memory-hub": {
+      "command": "node",
+      "args": ["/path/to/memory-hub-examples/mcp-server/memory-hub-mcp.mjs"],
+      "env": { "MEMORY_HUB_ROOT": "/path/to/memory-hub-examples/example-hub" }
+    }
+  }
+}
+```
+
+Une fois configuré, l'hôte peut appeler les outils `search_hub` / `read_entry` / `hub_stats` — voir
+le README de ce dépôt.
+
 ## Intégrer un autre client
 
 Intégrer un nouvel hôte = ajouter un **enregistrement vérifié** à la table d'adaptation (`setup.py --list` affiche les champs evidence des entrées existantes à titre d'exemple) :

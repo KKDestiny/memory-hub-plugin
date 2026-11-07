@@ -188,6 +188,25 @@ python3 memory-hub-plugin/skills/memory-hub-setup/scripts/setup.py --client clau
 
 **保存場所**：既定は `~/MemoryHub`。環境変数 `MEMORY_HUB_ROOT` で任意のディレクトリに変更できます。
 
+## MCP Server サンプル
+companion リポジトリ [memory-hub-examples](https://github.com/KKDestiny/memory-hub-examples) に、
+依存ゼロの読み取り専用 MCP サーバー参考実装と、すぐ試せるサンプルデータを同梱しています。
+管理アプリがなくても MCP 検索チャネルを通せます：
+
+```json
+{
+  "mcpServers": {
+    "memory-hub": {
+      "command": "node",
+      "args": ["/path/to/memory-hub-examples/mcp-server/memory-hub-mcp.mjs"],
+      "env": { "MEMORY_HUB_ROOT": "/path/to/memory-hub-examples/example-hub" }
+    }
+  }
+}
+```
+
+設定後、ホストから `search_hub` / `read_entry` / `hub_stats` の 3 ツールを呼び出せます。詳細は同リポジトリの README を参照してください。
+
 ## 他のクライアントを接続するには
 
 新しいホストの接続 = アダプタテーブルに**検証済みの記録**を 1 件追加すること（`setup.py --list` が既存エントリの evidence フィールドを見本として表示します）：
