@@ -25,8 +25,9 @@ FIXED = {"project-rules": "rule", "global-rules": "rule", "rules": "rule",
 
 
 def kind_of(filename, text):
-    """判定条目类别：优先取 frontmatter 的 kind，其次按文件名规则推断。"""
-    m = re.match(r"^kind\s*:\s*(\w+)", text, re.I | re.M)
+    """判定条目类别：优先取 frontmatter 的 kind，其次按文件名规则推断。
+    匹配必须用 re.search：条目以 "---" 行开头，re.match 只在字符串起始处尝试，永远命中不了 frontmatter 行。"""
+    m = re.search(r"^kind\s*:\s*(\w+)", text, re.I | re.M)
     if m:
         return m.group(1).lower()
     m = SESSION_RE.match(filename)

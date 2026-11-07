@@ -136,7 +136,8 @@ def build_turns_from_transcript(path_):
                 current = {"n": len(turns) + 1, "time": "", "user": "", "assistant": "", "tools": []}
             if content:
                 current["assistant"] = (current["assistant"] + "\n" + content).strip() if current["assistant"] else content
-            for m in re.findall(r'"(?:name|tool_name)"\s*:\s*"([A-Za-z0-9_\-]+)"', flatten(msg.get("content") or ""))[:5]:
+            # 工具名从 content 的原始 JSON 提取：flatten() 只保留 text 字段，会丢掉列表形态里的 tool_use 条目
+            for m in re.findall(r'"(?:name|tool_name)"\s*:\s*"([A-Za-z0-9_\-]+)"', json.dumps(msg.get("content") or "", ensure_ascii=False))[:5]:
                 if m not in current["tools"] and len(current["tools"]) < 20:
                     current["tools"].append(m)
     if current and (current.get("user") or current.get("assistant")):
@@ -467,7 +468,8 @@ def summarize_from_transcript(path_):
         elif role == "assistant":
             assistant_last = content
             turns += 1
-        for m in re.findall(r'"(?:name|tool_name)"\s*:\s*"([A-Za-z0-9_\-]+)"', content)[:5]:
+        # 工具名从 content 的原始 JSON 提取（原因同 build_turns_from_transcript）
+        for m in re.findall(r'"(?:name|tool_name)"\s*:\s*"([A-Za-z0-9_\-]+)"', json.dumps(msg.get("content") or "", ensure_ascii=False))[:5]:
             if m not in tools and len(tools) < 20:
                 tools.append(m)
         for m in re.findall(r"([/\w.\-]+\.[A-Za-z0-9]{1,6})", content):
