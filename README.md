@@ -1,3 +1,12 @@
+<p align="center">
+  **简体中文** ·
+  <a href="README.zh-Hant.md">繁體中文</a> ·
+  <a href="README.en.md">English</a> ·
+  <a href="README.fr.md">Français</a> ·
+  <a href="README.ja.md">日本語</a> ·
+  <a href="README.ru.md">Русский</a>
+</p>
+
 # Memory Hub Plugin（跨客户端共享记忆中台）
 
 让多个 AI 编码客户端**共享同一份记忆**的本地中台：你在 Claude Code 里定下的架构约定、在 ZCode 里记录的问题排查结论、在 WorkBuddy 里聊过的会话结论，都会沉淀到同一个本地记忆库，并能在任意其他客户端里检索引用。
