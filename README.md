@@ -215,6 +215,43 @@ python3 memory-hub-plugin/skills/memory-hub-setup/scripts/setup.py --client clau
 - **工具**：`search_hub` / `read_entry` / `get_session` / `list_partitions` / `list_clients` / `read_catalog` / `hub_stats`（全部只读），详见 [mcp/README.md](mcp/README.md)；
 - 想先用示例数据体验：把 `MEMORY_HUB_ROOT` 指向本仓库 [examples/hub](examples/)。
 
+## 使用场景（以具体客户端为例）
+
+各宿主能力不同，接入后的形态分两类：**自动宿主**（ZCode、Claude Code、WorkBuddy、Qoder——Stop 钩子可自动沉淀会话）与 **MCP 宿主**（Codex、MiniMax Code、opencode、TRAE 系列——钩子不可用或无转录：读走 MCP，写走手动导出）。
+
+### ZCode：全功能形态（自动沉淀 + MCP 直读）
+
+```bash
+# 1. 一条命令接入：写入 Stop 钩子 + 内置只读 MCP server（写前备份，可重复执行）
+python3 skills/memory-hub-setup/scripts/setup.py --client zcode
+# 2. 重启 ZCode 生效
+```
+
+之后**日常无需任何操作**：每场会话结束时 Stop 钩子自动把摘要（授权后为逐轮全文）写入中台对应的项目分区。在 ZCode 对话里问「这个项目之前是怎么约定的？」，模型直接调用 `search_hub` 检索并以来源引用作答；未配置 MCP 时，agent 也会按 consume skill 跑检索脚本——两条读取路径等价。记忆/规则/工作流在会话里对 agent 说「导出到记忆中台」即可，由 export skill 聚合写入。
+
+### Codex：MCP 宿主形态（读走 MCP，写走手动）
+
+Codex 的钩子结构未取证，接入脚本只写 MCP（TOML 格式）：
+
+```bash
+python3 skills/memory-hub-setup/scripts/setup.py --client codex --mcp-only   # 写入 ~/.codex/config.toml
+```
+
+重启 Codex 后即可在对话中检索中台（`search_hub` 等工具）。写入没有自动通道，走两条手动路径：
+
+```bash
+# 记忆/规则聚合导出（agent 也可按 export skill 执行）
+python3 skills/memory-hub-export/scripts/memory_hub_export.py --client codex --kind memory --from-dir <目录> --project <项目绝对路径>
+# 历史会话全量导入：先 dry-run 清点「将导入 N 场」，确认后去掉 --dry-run（Codex 的明文会话目录以实际为准）
+python3 skills/memory-hub-export/scripts/memory_hub_hook.py --client codex --import-all --sessions-dir <你的明文会话目录> --dry-run
+```
+
+MiniMax Code、opencode、TRAE 系列同属这一形态。
+
+### Claude Code → ZCode：跨客户端接力
+
+周一在 Claude Code 里和团队定下「本项目 ORM 一律用 Drizzle」并写入其规则，钩子同时自动沉淀当天的会话；周三在 ZCode 里问「这个项目的 ORM 约定是什么」——`search_hub` 命中中台里 claude-code 导出的规则文件，回答自动标注来源（`claude-code · projects/<分区>/clients/claude-code/rule-project-<hash>.md`）。两个客户端改的是同一个仓库：各自的沉淀落在同一分区的不同 `clients/` 子目录，检索互相可见。
+
 ## 其他客户端如何接入
 
 新宿主接入 = 在适配表中补一条**取证记录**（`setup.py --list` 会展示现有条目的 evidence 字段作为范例）：

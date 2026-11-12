@@ -215,6 +215,43 @@ Le dépôt embarque son propre serveur MCP en lecture seule (`mcp/memory-hub-mcp
 - **Outils** : `search_hub` / `read_entry` / `get_session` / `list_partitions` / `list_clients` / `read_catalog` / `hub_stats` (tous en lecture seule) — voir [mcp/README.md](mcp/README.md) ;
 - Pour essayer d'abord sur des données d'exemple, pointez `MEMORY_HUB_ROOT` vers [examples/hub](examples/) du dépôt.
 
+## Scénarios d'utilisation (par client)
+
+Les hôtes diffèrent par leurs capacités, d'où deux formes après installation : **hôtes automatiques** (ZCode, Claude Code, WorkBuddy, Qoder — le hook Stop accumule les sessions automatiquement) et **hôtes MCP seuls** (Codex, MiniMax Code, opencode, la famille TRAE — pas de hook/transcript exploitable : lecture via MCP, écriture par export manuel).
+
+### ZCode : forme complète (accumulation automatique + lecture MCP directe)
+
+```bash
+# 1. Une seule commande câble tout : hook Stop + serveur MCP intégré en lecture seule (sauvegarde avant écriture ; réexécution sûre)
+python3 skills/memory-hub-setup/scripts/setup.py --client zcode
+# 2. Redémarrer ZCode pour appliquer
+```
+
+Ensuite, **au quotidien, rien à faire** : à la fin de chaque session, le hook Stop écrit automatiquement le résumé (texte intégral tour par tour après autorisation) dans la partition projet du hub. Demandez dans une conversation ZCode « qu'avions-nous décidé pour ce projet ? » : le modèle appelle `search_hub` directement et répond en citant la source ; sans MCP configuré, l'agent exécute le script de recherche via le skill consume — les deux chemins de lecture sont équivalents. Pour exporter mémoires/règles/workflows, demandez-le simplement à l'agent en session ; le skill export agrège et écrit.
+
+### Codex : hôte MCP seul (lecture via MCP, écriture manuelle)
+
+La structure des hooks de Codex n'est pas vérifiée ; le script d'installation n'écrit donc que le MCP (format TOML) :
+
+```bash
+python3 skills/memory-hub-setup/scripts/setup.py --client codex --mcp-only   # écrit ~/.codex/config.toml
+```
+
+Après redémarrage, Codex peut interroger le hub en conversation (`search_hub` etc.). Il n'y a pas de canal d'écriture automatique ; deux chemins manuels :
+
+```bash
+# Export agrégé des mémoires/règles (l'agent peut aussi l'exécuter via le skill export)
+python3 skills/memory-hub-export/scripts/memory_hub_export.py --client codex --kind memory --from-dir <répertoire> --project <chemin absolu du projet>
+# Import en masse de l'historique : dry-run d'abord pour voir « N sessions à importer », puis retirez --dry-run (le répertoire de sessions de Codex varie selon l'installation)
+python3 skills/memory-hub-export/scripts/memory_hub_hook.py --client codex --import-all --sessions-dir <votre répertoire de sessions> --dry-run
+```
+
+MiniMax Code, opencode et la famille TRAE suivent la même forme.
+
+### Claude Code → ZCode : relais entre clients
+
+Lundi, vous convenez dans Claude Code que « l'ORM de ce projet est toujours Drizzle », ce qui devient une règle, tandis que le hook accumule la session du jour ; mercredi, vous demandez à ZCode « quelle est la convention ORM de ce projet ? » — `search_hub` trouve le fichier de règles exporté par claude-code dans le hub, et la réponse cite automatiquement la source (`claude-code · projects/<partition>/clients/claude-code/rule-project-<hash>.md`). Les deux clients travaillent sur le même dépôt : leurs dépôts de mémoire atterrissent dans la même partition, dans des sous-répertoires `clients/` distincts, visibles l'un comme l'autre à la recherche.
+
 ## Intégrer un autre client
 
 Intégrer un nouvel hôte = ajouter un **enregistrement vérifié** à la table d'adaptation (`setup.py --list` affiche les champs evidence des entrées existantes à titre d'exemple) :

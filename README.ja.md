@@ -215,6 +215,43 @@ python3 memory-hub-plugin/skills/memory-hub-setup/scripts/setup.py --client clau
 - **ツール**：`search_hub` / `read_entry` / `get_session` / `list_partitions` / `list_clients` / `read_catalog` / `hub_stats`（すべて読み取り専用）。詳細は [mcp/README.md](mcp/README.md)；
 - まずサンプルデータで試すには、`MEMORY_HUB_ROOT` を本リポジトリの [examples/hub](examples/) に向けてください。
 
+## 利用シナリオ（クライアント別）
+
+ホストごとに能力が異なるため、接入後の形は 2 種類あります：**自動ホスト**（ZCode、Claude Code、WorkBuddy、Qoder——Stop フックがセッションを自動蓄積）と **MCP のみのホスト**（Codex、MiniMax Code、opencode、TRAE 系——フック不可・トランスクリプトなし：読み取りは MCP、書き込みは手動エクスポート）。
+
+### ZCode：フル機能形態（自動蓄積 + MCP 直接読み取り）
+
+```bash
+# 1. コマンド 1 本で接続完了：Stop フック + 内蔵の読み取り専用 MCP サーバー（書き込み前にバックアップ、再実行可能）
+python3 skills/memory-hub-setup/scripts/setup.py --client zcode
+# 2. ZCode を再起動して反映
+```
+
+以後**日常操作は不要**です。各セッションの終了時に Stop フックが要約（許可後はターン別全文）をハブの該当プロジェクト・パーティションへ自動書き込みします。ZCode の会話で「このプロジェクトの約束はどうなってた？」と聞けば、モデルが `search_hub` を直接呼び出し、出典付きで回答します。MCP 未設定の場合は agent が consume skill に従って検索スクリプトを実行——2 つの読み取り経路は等価です。記憶/ルール/ワークフローの書き出しは、会話内で agent に「記憶ハブへ書き出して」と伝えるだけで、export skill が集約して書き込みます。
+
+### Codex：MCP のみのホスト形態（読み取りは MCP、書き込みは手動）
+
+Codex はフック構造が未検証のため、セットアップスクリプトは MCP のみ書き込みます（TOML 形式）：
+
+```bash
+python3 skills/memory-hub-setup/scripts/setup.py --client codex --mcp-only   # ~/.codex/config.toml に書き込み
+```
+
+再起動後、Codex の会話でハブを検索できます（`search_hub` など）。書き込みの自動経路はなく、手動 2 経路を使います：
+
+```bash
+# 記憶/ルールの集約エクスポート（agent が export skill 経由で実行してもよい）
+python3 skills/memory-hub-export/scripts/memory_hub_export.py --client codex --kind memory --from-dir <ディレクトリ> --project <プロジェクトの絶対パス>
+# 履歴セッションの一括取り込み：まず dry-run で「N 件を取り込みます」を確認し、OK なら --dry-run を外す（Codex のセッション格納場所は環境により異なる）
+python3 skills/memory-hub-export/scripts/memory_hub_hook.py --client codex --import-all --sessions-dir <あなたの平文セッション・ディレクトリ> --dry-run
+```
+
+MiniMax Code、opencode、TRAE 系も同じ形態です。
+
+### Claude Code → ZCode：クライアント間の引き継ぎ
+
+月曜に Claude Code でチームと「このプロジェクトの ORM は Drizzle 一択」と決めてルールに書き込み、フックがその日のセッションも自動蓄積。水曜に ZCode で「このプロジェクトの ORM の約束は？」と聞くと、`search_hub` が claude-code が書き出したルールファイルを命中し、出典付き（`claude-code · projects/<パーティション>/clients/claude-code/rule-project-<hash>.md`）で回答します。2 つのクライアントは同じリポジトリを触っており、それぞれの蓄積は同一パーティション内の別々の `clients/` サブディレクトリに置かれ、検索は互いに見えます。
+
 ## 他のクライアントを接続するには
 
 新しいホストの接続 = アダプタテーブルに**検証済みの記録**を 1 件追加すること（`setup.py --list` が既存エントリの evidence フィールドを見本として表示します）：

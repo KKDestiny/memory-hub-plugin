@@ -215,6 +215,43 @@ The repository ships its own read-only MCP server (`mcp/memory-hub-mcp.mjs`, zer
 - **Tools**: `search_hub` / `read_entry` / `get_session` / `list_partitions` / `list_clients` / `read_catalog` / `hub_stats` (all read-only) — see [mcp/README.md](mcp/README.md);
 - To try it on sample data first, point `MEMORY_HUB_ROOT` at this repository's [examples/hub](examples/).
 
+## Usage Walkthroughs (by Client)
+
+Hosts differ in capability, resulting in two post-install shapes: **automatic hosts** (ZCode, Claude Code, WorkBuddy, Qoder — the Stop hook accumulates sessions automatically) and **MCP-only hosts** (Codex, MiniMax Code, opencode, the TRAE family — no usable hook/transcript: reads go through MCP, writes are manual exports).
+
+### ZCode: full-featured shape (auto-accumulation + direct MCP reads)
+
+```bash
+# 1. One command wires everything: Stop hook + built-in read-only MCP server (backs up before writing; safe to re-run)
+python3 skills/memory-hub-setup/scripts/setup.py --client zcode
+# 2. Restart ZCode to take effect
+```
+
+After that, **daily use needs zero effort**: at the end of each session the Stop hook automatically writes the digest (per-turn full text once authorized) into the hub's project partition. Ask in a ZCode chat, "what did we agree on for this project?" and the model calls `search_hub` directly and answers with source citations; without MCP configured, the agent runs the search script per the consume skill instead — both read paths are equivalent. To export memories/rules/workflows, just tell the agent in-session; the export skill aggregates and writes them.
+
+### Codex: MCP-only host shape (reads via MCP, writes by hand)
+
+Codex's hook structure is unverified, so the setup script writes MCP only (TOML format):
+
+```bash
+python3 skills/memory-hub-setup/scripts/setup.py --client codex --mcp-only   # writes ~/.codex/config.toml
+```
+
+Restart Codex and you can search the hub in conversation (`search_hub` etc.). There is no automatic write channel; use the two manual paths:
+
+```bash
+# Aggregated export of memories/rules (the agent can also run this via the export skill)
+python3 skills/memory-hub-export/scripts/memory_hub_export.py --client codex --kind memory --from-dir <dir> --project <abs project path>
+# Bulk import of session history: dry-run first to see "N sessions to import", then drop --dry-run (Codex's plaintext session dir varies by install)
+python3 skills/memory-hub-export/scripts/memory_hub_hook.py --client codex --import-all --sessions-dir <your plaintext session dir> --dry-run
+```
+
+MiniMax Code, opencode and the TRAE family follow the same shape.
+
+### Claude Code → ZCode: cross-client handoff
+
+On Monday you settle with your team in Claude Code that "this project's ORM is always Drizzle" and it becomes a rule, while the hook auto-accumulates that day's session; on Wednesday you ask ZCode "what's this project's ORM convention?" — `search_hub` hits the rule file claude-code exported to the hub, and the answer cites the source automatically (`claude-code · projects/<partition>/clients/claude-code/rule-project-<hash>.md`). Both clients work on the same repo: their deposits land in the same partition under separate `clients/` subdirectories, mutually visible to searches.
+
 ## Adding Another Client
 
 Onboarding a new host = adding one **verified record** to the adapter table (`setup.py --list` shows the existing entries' evidence fields as examples):
