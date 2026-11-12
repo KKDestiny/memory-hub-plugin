@@ -108,5 +108,75 @@ class PatchTomlClientTest(unittest.TestCase):
         self.assertIn('"--client", "zcode"', new_text)
 
 
+class MergeMcpJsonTest(unittest.TestCase):
+    ADAPTER = {"mcp": {"keys": ["mcpServers"], "serverExtra": {"type": "stdio"}}}
+
+    def setUp(self):
+        # mcp_server 读取数据根与端点文件：隔离到临时目录，避免依赖本机真实中台
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        self._saved = os.environ.get("MEMORY_HUB_ROOT")
+        os.environ["MEMORY_HUB_ROOT"] = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+        if self._saved is None:
+            os.environ.pop("MEMORY_HUB_ROOT", None)
+        else:
+            os.environ["MEMORY_HUB_ROOT"] = self._saved
+
+    def test_plugin_default_creates_entry_without_client_id(self):
+        cfg, written = setup.merge_mcp_json({}, self.ADAPTER, "zcode", "plugin")
+        self.assertEqual(written, "created")
+        entry = cfg["mcpServers"]["memory-hub"]
+        self.assertEqual(entry["command"], "node")
+        self.assertEqual(entry["args"], [setup.PLUGIN_MCP])
+        self.assertNotIn(setup.CLIENT_ARG, entry["args"])
+        self.assertEqual(entry["env"], {"MEMORY_HUB_ROOT": self.tmp.name})
+        self.assertNotIn("MEMORY_HUB_CLIENT_ID", entry["env"])
+        self.assertEqual(entry["type"], "stdio")
+
+    def test_plugin_mode_conflicts_with_existing_desktop_entry(self):
+        desktop_entry = {"type": "stdio", "command": "node",
+                         "args": ["/app/server.mjs", "--client", "zcode"],
+                         "env": {"MEMORY_HUB_ROOT": "/x", "MEMORY_HUB_CLIENT_ID": "zcode"}}
+        cfg = {"mcpServers": {"memory-hub": dict(desktop_entry)}}
+        cfg2, written = setup.merge_mcp_json(cfg, self.ADAPTER, "zcode", "plugin")
+        self.assertEqual(written, "conflict")
+        self.assertEqual(cfg2["mcpServers"]["memory-hub"], desktop_entry)  # 不改写
+
+    def test_plugin_entry_idempotent_and_root_corrected(self):
+        cfg, written = setup.merge_mcp_json({}, self.ADAPTER, "zcode", "plugin")
+        self.assertEqual(written, "created")
+        cfg, written = setup.merge_mcp_json(cfg, self.ADAPTER, "zcode", "plugin")
+        self.assertFalse(written)  # 完全一致：无改动
+        cfg["mcpServers"]["memory-hub"]["env"]["MEMORY_HUB_ROOT"] = "/old/root"
+        cfg, written = setup.merge_mcp_json(cfg, self.ADAPTER, "zcode", "plugin")
+        self.assertEqual(written, "updated")  # 数据根漂移被校正
+        self.assertEqual(cfg["mcpServers"]["memory-hub"]["env"]["MEMORY_HUB_ROOT"], self.tmp.name)
+
+    def test_desktop_source_rewrites_plugin_entry(self):
+        cfg = {"mcpServers": {"memory-hub": {"type": "stdio", "command": "node",
+                                             "args": [setup.PLUGIN_MCP],
+                                             "env": {"MEMORY_HUB_ROOT": self.tmp.name}}}}
+        cfg2, written = setup.merge_mcp_json(cfg, self.ADAPTER, "myzcode", "desktop")
+        self.assertEqual(written, "updated")
+        entry = cfg2["mcpServers"]["memory-hub"]
+        self.assertIn("--client", entry["args"])
+        self.assertEqual(entry["env"]["MEMORY_HUB_CLIENT_ID"], "myzcode")
+        self.assertNotIn(setup.PLUGIN_MCP, str(entry["args"]))
+
+    def test_desktop_source_keeps_injecting_into_desktop_entry(self):
+        cfg = {"mcpServers": {"memory-hub": {"type": "stdio", "command": "node",
+                                             "args": ["/app/server.mjs", "--client", "old"],
+                                             "env": {"MEMORY_HUB_ROOT": self.tmp.name,
+                                                     "MEMORY_HUB_CLIENT_ID": "old"}}}}
+        cfg2, written = setup.merge_mcp_json(cfg, self.ADAPTER, "zcode", "desktop")
+        self.assertEqual(written, "updated")
+        entry = cfg2["mcpServers"]["memory-hub"]
+        self.assertEqual(entry["args"][entry["args"].index("--client") + 1], "zcode")
+        self.assertEqual(entry["env"]["MEMORY_HUB_CLIENT_ID"], "zcode")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "memory-hub": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/memory-hub-mcp.mjs"]
+    }
+  }
+}

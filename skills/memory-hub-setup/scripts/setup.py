@@ -3,19 +3,26 @@
 """memory-hub-setup：按宿主已验证的配置契约，幂等地写入钩子与 MCP 配置。
 
 用法：
-  python3 setup.py --list                       # 列出各宿主的验证状态与配置文件位置
-  python3 setup.py --client <id> --dry-run      # 打印将要写入的内容，不落盘
-  python3 setup.py --client <id>                # 幂等写入；写入前备份为 <文件>.hub-bak
+  python3 setup.py --list                                    # 列出各宿主的验证状态与配置文件位置
+  python3 setup.py --client <id> --dry-run                   # 打印将要写入的内容，不落盘
+  python3 setup.py --client <id>                             # 幂等写入；写入前备份为 <文件>.hub-bak
   python3 setup.py --client <id> --hooks-only | --mcp-only
+  python3 setup.py --client <id> --mcp-source plugin|desktop # MCP 条目来源，缺省 plugin
 
 行为约束：
   * 不删除、不覆盖宿主配置中已有的条目，只追加本工具自身的声明；钩子条目以命令串中的
     "memory_hub_hook" 作为去重标记。
   * 写入前备份为 <文件>.hub-bak；配置文件无法解析时中止并保留原文件（退出码 4）。
   * 适配表中未确认钩子结构的宿主（hooks 为 null）会明确报告不支持自动安装及原因，不猜测路径。
-  * 客户端标识约束：写入 MCP 条目时必须同时注入 "--client <id>" 参数与 MEMORY_HUB_CLIENT_ID 环境变量；
-    对已存在的条目同样补齐或校正（written 为 "updated"）。宿主在 MCP 握手中自报的名称不受本工具
-    控制，只有注入的标识才能保证导出目录 clients/<id>/ 与连接侧的授权记录指向同一客户端。
+  * MCP 来源（--mcp-source）：
+      plugin（缺省）——写入本插件自带的只读 server（mcp/memory-hub-mcp.mjs）。只读 server 不消费
+        客户端身份，条目只带 env MEMORY_HUB_ROOT，不带 --client / MEMORY_HUB_CLIENT_ID。
+      desktop——写入配套管理端的完整 server（授权写、聚合索引）。此时必须注入 "--client <id>"
+        参数与 MEMORY_HUB_CLIENT_ID 环境变量：宿主在 MCP 握手中自报的名称不受本工具控制，只有
+        注入的标识才能保证导出目录 clients/<id>/ 与连接侧的授权记录指向同一客户端。
+  * 来源冲突不静默改写：默认（plugin）模式下发现既有条目指向 desktop server 时，mcp.written
+    返回 "conflict" 并说明改用 --mcp-source desktop 或先删除既有条目；显式指定 desktop 时允许
+    把 plugin 条目改写为 desktop 条目（用户明确要求的来源切换）。
   * 客户端标识以中台登记为准：--client 传入的是宿主 id（适配表的键），实际写入配置的标识从中台
     .state/client-ids.json 的映射表解析；映射表不存在或未命中时使用宿主 id。归属本客户端的既有
     条目，其标识与映射值不一致时改写为映射值；其他客户端的条目保持原样并报告冲突。
@@ -39,6 +46,9 @@ ADAPTERS_META = ADAPTERS.pop("_meta", {})
 HOOK_MARKER = "memory_hub_hook"  # 钩子条目的去重标记：同一配置重复写入时据此识别自身条目
 CLIENT_ARG = "--client"          # 注入 MCP 配置的客户端标识参数名（与 MCP server 的解析规则一致）
 PY = sys.executable
+# 本插件自带的只读 MCP server（plugin 源）：skills/memory-hub-setup/scripts → 仓库根 → mcp/
+PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
+PLUGIN_MCP = os.path.join(PLUGIN_ROOT, "mcp", "memory-hub-mcp.mjs")
 
 
 def memory_root():
@@ -212,16 +222,34 @@ def merge_hooks(cfg, adapter, client, resolve=None):
     return cfg, written, skipped, conflicts, id_fixed
 
 
-def mcp_server(adapter, client):
-    """构造 memory-hub 的 server 条目。客户端标识为必填项，见模块头的约束说明。"""
+def mcp_entry_source(entry):
+    """识别既有 memory-hub 条目指向哪个来源的 server：plugin（本插件只读 server）/ desktop。"""
+    text = json.dumps(entry)
+    if "memory-hub-mcp.mjs" in text:
+        return "plugin"
+    return "desktop"
+
+
+def mcp_server(adapter, client, source="plugin"):
+    """构造 memory-hub 的 server 条目。source 语义与模块头「MCP 来源」一致：
+    plugin = 本插件只读 server（不注入客户端标识）；desktop = 管理端完整 server（必须注入标识）。"""
     extra = adapter["mcp"].get("serverExtra") or {}
+    root = memory_root()
+    if source == "plugin":
+        if adapter["mcp"].get("shape") == "opencode":
+            return {"type": "local", "command": ["node", PLUGIN_MCP],
+                    "environment": {"MEMORY_HUB_ROOT": root}}
+        out = dict(extra)
+        out["command"] = "node"
+        out["args"] = [PLUGIN_MCP]
+        out["env"] = {"MEMORY_HUB_ROOT": root}
+        return out
     server_path = ""
     try:
         endpoint = json.load(open(os.path.join(memory_root(), ".state", "app.json"), encoding="utf-8"))
         server_path = endpoint.get("serverPath") or ""
     except (OSError, ValueError):
         server_path = ""
-    root = memory_root()
     if adapter["mcp"].get("shape") == "opencode":
         cmd = ["node", server_path] if server_path and os.path.exists(server_path) else ["memory-hub"]
         return {"type": "local", "command": cmd + [CLIENT_ARG, client],
@@ -284,7 +312,7 @@ def inject_client_id(entry, client, shape="json"):
     return changed
 
 
-def merge_mcp_json(cfg, adapter, client):
+def merge_mcp_json(cfg, adapter, client, source="plugin"):
     keys = adapter["mcp"]["keys"]
     cur = cfg
     for k in keys[:-1]:
@@ -299,9 +327,24 @@ def merge_mcp_json(cfg, adapter, client):
     cur[keys[-1]] = box
     shape = adapter["mcp"].get("shape") or "json"
     if "memory-hub" in box:
-        # 已存在的条目不做整条替换，只补齐客户端标识，保证导出侧与连接侧标识一致
-        return cfg, ("updated" if inject_client_id(box["memory-hub"], client, shape) else False)
-    box["memory-hub"] = mcp_server(adapter, client)
+        entry = box["memory-hub"]
+        existing_source = mcp_entry_source(entry)
+        if source == "plugin":
+            if existing_source != "plugin":
+                # 既有条目指向 desktop server：默认模式不改写，报告冲突交由用户选择来源
+                return cfg, "conflict"
+            # 同源的 plugin 条目：只校正数据根（文件路径迁移、MEMORY_HUB_ROOT 变更后重跑可修复）
+            want = mcp_server(adapter, client, "plugin")
+            if json.dumps(entry, sort_keys=True) != json.dumps(want, sort_keys=True):
+                box["memory-hub"] = want
+                return cfg, "updated"
+            return cfg, False
+        # desktop 源：plugin 条目按用户明确的来源切换整条改写；desktop 条目只补齐/校正标识
+        if existing_source == "plugin":
+            box["memory-hub"] = mcp_server(adapter, client, "desktop")
+            return cfg, "updated"
+        return cfg, ("updated" if inject_client_id(entry, client, shape) else False)
+    box["memory-hub"] = mcp_server(adapter, client, source)
     return cfg, "created"
 
 
@@ -402,15 +445,40 @@ def patch_toml_client(text, client, table):
     return chr(10).join(lines), changed
 
 
-def merge_mcp_toml(path_, adapter, client):
-    """Codex 的 config.toml 写入：标记注释 + 幂等追加或补齐（Python 标准库不提供 TOML 写入）。"""
+def merge_mcp_toml(path_, adapter, client, source="plugin"):
+    """Codex 的 config.toml 写入：标记注释 + 幂等追加或补齐（Python 标准库不提供 TOML 写入）。
+    来源语义与 merge_mcp_json 一致：plugin 条目不含标识；desktop 条目含 --client 与 env。"""
     marker = "# --- memory-hub (added by memory-hub-setup) ---"
-    server = mcp_server(adapter, client)
+    server = mcp_server(adapter, client, source)
     table = adapter["mcp"]["table"]
     text = ""
     if os.path.exists(path_):
         text = open(path_, encoding="utf-8").read()
     if marker in text:
+        block_text = text[marker_i: marker_i + 2000] if (marker_i := text.find(marker)) >= 0 else ""
+        existing_source = "plugin" if "memory-hub-mcp.mjs" in block_text else "desktop"
+        if source == "plugin":
+            if existing_source != "plugin":
+                return text, "conflict"
+            want_root = memory_root()
+            want_env = "MEMORY_HUB_ROOT = %s" % json.dumps(want_root)
+            if want_env not in block_text:
+                # 数据根变化：按新来源整段重建（以重建代替行级补丁，避免文本拼接漂移）
+                new_text = text[:text.find(marker)].rstrip(chr(10)) + chr(10) + chr(10) + chr(10).join(
+                    [marker, "[%s.memory-hub]" % table, 'command = "%s"' % server["command"],
+                     "args = [%s]" % ", ".join(json.dumps(x) for x in server.get("args", [])),
+                     "[%s.memory-hub.env]" % table]
+                    + ["%s = %s" % (k, json.dumps(v)) for k, v in (server.get("env") or {}).items()] + [""])
+                return new_text, "updated"
+            return text, False
+        # desktop：plugin 条目整段重建为 desktop；desktop 条目走标识补齐/校正
+        if existing_source == "plugin":
+            new_text = text[:text.find(marker)].rstrip(chr(10)) + chr(10) + chr(10) + chr(10).join(
+                [marker, "[%s.memory-hub]" % table, 'command = "%s"' % server["command"],
+                 "args = [%s]" % ", ".join(json.dumps(x) for x in server.get("args", [])),
+                 "[%s.memory-hub.env]" % table]
+                + ["%s = %s" % (k, json.dumps(v)) for k, v in (server.get("env") or {}).items()] + [""])
+            return new_text, "updated"
         new_text, changed = patch_toml_client(text, client, table)
         return new_text, ("updated" if changed else False)
     block = [marker, "[%s.memory-hub]" % table, 'command = "%s"' % server["command"],
@@ -429,6 +497,8 @@ def main():
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--hooks-only", action="store_true")
     parser.add_argument("--mcp-only", action="store_true")
+    parser.add_argument("--mcp-source", choices=["plugin", "desktop"], default="plugin",
+                        help="MCP 条目来源：plugin=本插件只读 server（缺省）；desktop=配套管理端完整 server（注入客户端标识）")
     args = parser.parse_args()
 
     if args.list or not args.client:
@@ -474,26 +544,40 @@ def main():
     if not args.hooks_only:
         if not adapter.get("mcp"):
             result["mcp"] = {"skipped": True, "reason": "该宿主的 MCP 配置位置未确认"}
+        elif args.mcp_source == "plugin" and not os.path.exists(PLUGIN_MCP):
+            result["mcp"] = {"skipped": True, "source": "plugin",
+                             "reason": "缺少 mcp/memory-hub-mcp.mjs：请整包安装插件仓库（--mcp-source desktop 可改装管理端 server）"}
+            result["skipped"].append("mcp: %s" % result["mcp"]["reason"])
         else:
             mcp_file = expand(adapter["mcp"]["file"])
             if adapter["mcp"]["format"] == "toml":
-                text, changed = merge_mcp_toml(mcp_file, adapter, client)
-                if not args.dry_run and changed:
+                text, changed = merge_mcp_toml(mcp_file, adapter, client, args.mcp_source)
+                if changed not in (False, "conflict") and not args.dry_run:
                     os.makedirs(os.path.dirname(mcp_file) or ".", exist_ok=True)
                     if os.path.exists(mcp_file):
                         shutil.copy2(mcp_file, mcp_file + ".hub-bak")
                     open(mcp_file, "w", encoding="utf-8").write(text)
-                result["mcp"] = {"file": mcp_file, "written": changed, "format": "toml", "clientId": client,
-                                 "content": text if args.dry_run else None, "note": adapter["mcp"].get("note")}
+                mcp_result = {"file": mcp_file, "written": changed, "format": "toml",
+                              "source": args.mcp_source, "clientId": client,
+                              "content": text if args.dry_run else None, "note": adapter["mcp"].get("note")}
+                if changed == "conflict":
+                    mcp_result["reason"] = "既有 memory-hub 条目指向管理端 server（desktop 源）：默认不改写。确需切换请显式 --mcp-source desktop，或先删除既有条目"
+                    result["skipped"].append("mcp: 来源冲突（desktop 条目已存在）")
+                result["mcp"] = mcp_result
             else:
                 cfg, ok = read_json(mcp_file)
                 if not ok:
                     print(json.dumps({"ok": False, "reason": "配置文件无法解析，已中止写入（可从 %s.hub-bak 恢复）" % mcp_file}, ensure_ascii=False))
                     return 4
-                cfg, changed = merge_mcp_json(cfg, adapter, client)
+                cfg, changed = merge_mcp_json(cfg, adapter, client, args.mcp_source)
                 text = dump_json(mcp_file, cfg, args.dry_run)
-                result["mcp"] = {"file": mcp_file, "written": changed, "keys": ".".join(adapter["mcp"]["keys"]), "clientId": client,
-                                 "content": text if args.dry_run else None, "note": adapter["mcp"].get("note")}
+                mcp_result = {"file": mcp_file, "written": changed, "keys": ".".join(adapter["mcp"]["keys"]),
+                              "source": args.mcp_source, "clientId": client,
+                              "content": text if args.dry_run else None, "note": adapter["mcp"].get("note")}
+                if changed == "conflict":
+                    mcp_result["reason"] = "既有 memory-hub 条目指向管理端 server（desktop 源）：默认不改写。确需切换请显式 --mcp-source desktop，或先删除既有条目"
+                    result["skipped"].append("mcp: 来源冲突（desktop 条目已存在）")
+                result["mcp"] = mcp_result
 
     result["input"] = (adapter.get("hooks") or {}).get("input") or {}
     result["sessions"] = adapter.get("sessions")

@@ -17,6 +17,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Check Node (MCP server tests require it)
+        run: node --version
       - name: Compile scripts
         run: python -m compileall -q skills
       - name: Run unit tests
