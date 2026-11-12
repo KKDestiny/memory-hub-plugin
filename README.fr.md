@@ -11,7 +11,7 @@
 
 Un hub local qui permet à plusieurs clients de codage IA de **partager la même mémoire** : les conventions d'architecture décidées dans Claude Code, les conclusions de débogage notées dans ZCode, les résultats de sessions discutés dans WorkBuddy — tout s'accumule dans un seul magasin de mémoire local, consultable et référençable depuis n'importe quel autre client.
 
-> **Générique, local d'abord, lié à aucune application de bureau.** Implémenté avec la bibliothèque standard Python uniquement (zéro dépendance tierce) ; le cœur est un protocole de fichiers « un arbre Markdown + trois skills » — tout fonctionne hors ligne, sans aucun service en ligne. Avec une application de gestion compagnon en option, vous obtenez en plus des index agrégés et un chemin rapide HTTP, mais **tout fonctionne sans elle**.
+> **Générique, local d'abord, lié à aucune application de bureau.** Implémenté avec la bibliothèque standard Python uniquement (zéro dépendance tierce) ; le cœur est un protocole de fichiers « un arbre Markdown + trois skills + un serveur MCP intégré en lecture seule » — tout fonctionne hors ligne, sans aucun service en ligne. Avec une application de gestion compagnon en option, vous obtenez en plus des index agrégés et un chemin rapide HTTP, mais **tout fonctionne sans elle**.
 
 ```text
 Claude Code ─┐                                     ┌─> ZCode        « Quelles conventions pour ce projet ? »
@@ -20,13 +20,18 @@ WorkBuddy   ─┤   (agrégation · anonymisation · incrément) └─> WorkBu
 TRAE / ... ─┘                    (lecture seule)
 ```
 
-## Les trois skills
+## Composants
 
 | Skill | Direction | Rôle |
 |---|---|---|
 | `memory-hub-setup` | Intégration | Écrit le hook Stop / la configuration MCP dans les fichiers des hôtes selon leur **contrat vérifié**. Idempotent, sauvegarde avant écriture (`*.hub-bak`), prévisualisation à sec, auto-contrôle par relecture |
 | `memory-hub-export` | Amont (écriture) | Exporte les mémoires / règles / workflows / sessions de ce client vers le hub. Agrégation, anonymisation, incrément par hash de contenu |
 | `memory-hub-consume` | Aval (lecture) | Recherche dans le hub les mémoires / règles / résumés de sessions contribués par les autres clients. **Lecture seule** ; toute citation doit indiquer le client source et le chemin |
+
+En plus des skills, le dépôt embarque deux autres composants :
+
+- `mcp/` — le serveur MCP intégré en lecture seule (7 outils) : tout client compatible MCP peut interroger le hub **sans installer de skill** ; voir « Serveur MCP (intégré) » ci-dessous.
+- `examples/hub/` — un mini-hub prêt à essayer, qui sert aussi de référence pour les tests de cohérence de recherche.
 
 Hôtes pris en charge (classés par statut de vérification ; voir `setup.py --list`) :
 Claude Code, ZCode, Codex, TRAE (International / CN / SOLO), WorkBuddy, Qoder, opencode, MiniMax Code.
@@ -60,7 +65,7 @@ flowchart LR
     end
 
     subgraph down["Aval : consommation (lecture seule)"]
-        mcp["serveur MCP du hub"]
+        mcp["built-in MCP server (read-only)"]
         search["recherche locale search.py"]
     end
 
@@ -188,25 +193,27 @@ Enregistrez ensuite les trois répertoires sous `skills/` comme skills de votre 
 
 **Emplacement de stockage** : par défaut `~/MemoryHub` ; la variable d'environnement `MEMORY_HUB_ROOT` permet de pointer vers n'importe quel répertoire.
 
-## Exemple de serveur MCP
-Le dépôt compagnon [memory-hub-examples](https://github.com/KKDestiny/memory-hub-examples) fournit une
-implémentation de référence d'un serveur MCP en lecture seule, sans dépendance, ainsi qu'un hub
-d'exemple prêt à l'emploi — le canal MCP fonctionne donc sans l'application de gestion :
+## Serveur MCP (intégré)
+
+Le dépôt embarque son propre serveur MCP en lecture seule (`mcp/memory-hub-mcp.mjs`, Node 18+ sans dépendance) : **tout client compatible MCP peut interroger le hub sans installer les skills de ce plugin**. L'écriture reste du ressort du skill export — le serveur n'expose aucun outil d'écriture.
 
 ```json
 {
   "mcpServers": {
     "memory-hub": {
+      "type": "stdio",
       "command": "node",
-      "args": ["/path/to/memory-hub-examples/mcp-server/memory-hub-mcp.mjs"],
-      "env": { "MEMORY_HUB_ROOT": "/path/to/memory-hub-examples/example-hub" }
+      "args": ["/path/to/memory-hub-plugin/mcp/memory-hub-mcp.mjs"],
+      "env": { "MEMORY_HUB_ROOT": "/Users/you/MemoryHub" }
     }
   }
 }
 ```
 
-Une fois configuré, l'hôte peut appeler les outils `search_hub` / `read_entry` / `hub_stats` — voir
-le README de ce dépôt.
+- **Sans configuration** : les clients conformes à agent-plugins le découvrent automatiquement via le `mcp.json` à la racine ;
+- **Câblage par script** : `setup.py --client <id>` écrit l'entrée ci-dessus par défaut (`--mcp-source desktop` bascule vers le serveur complet de Duti Studio : écritures autorisées, index agrégés) ;
+- **Outils** : `search_hub` / `read_entry` / `get_session` / `list_partitions` / `list_clients` / `read_catalog` / `hub_stats` (tous en lecture seule) — voir [mcp/README.md](mcp/README.md) ;
+- Pour essayer d'abord sur des données d'exemple, pointez `MEMORY_HUB_ROOT` vers [examples/hub](examples/) du dépôt.
 
 ## Intégrer un autre client
 

@@ -11,7 +11,7 @@
 
 让多个 AI 编码客户端**共享同一份记忆**的本地中台：你在 Claude Code 里定下的架构约定、在 ZCode 里记录的问题排查结论、在 WorkBuddy 里聊过的会话结论，都会沉淀到同一个本地记忆库，并能在任意其他客户端里检索引用。
 
-> **通用、本地优先、不绑定任何桌面应用。** 纯 Python 标准库实现（零第三方依赖），核心是「一个 Markdown 目录树 + 三个 skill」的文件协议——不联网、不依赖任何在线服务即可完整工作；若有配套管理端，可获得聚合索引与 HTTP 快通道，但**没有它一切照常**。
+> **通用、本地优先、不绑定任何桌面应用。** 纯 Python 标准库实现（零第三方依赖），核心是「一个 Markdown 目录树 + 三个 skill + 内置只读 MCP server」的文件协议——不联网、不依赖任何在线服务即可完整工作；若有配套管理端，可获得聚合索引与 HTTP 快通道，但**没有它一切照常**。
 
 ```text
 Claude Code ─┐                                  ┌─> ZCode       「这个项目之前怎么约定的？」
@@ -20,13 +20,18 @@ WorkBuddy   ─┤   (聚合·脱敏·增量)     (只读)     └─> WorkBuddy
 TRAE / ... ─┘
 ```
 
-## 三个 Skill
+## 产品组成
 
 | Skill | 方向 | 作用 |
 |---|---|---|
 | `memory-hub-setup` | 接入装配 | 按各宿主**真实契约**把 Stop 钩子 / MCP 写进配置。幂等、写前备份（`*.hub-bak`）、干跑预览、回读自检 |
 | `memory-hub-export` | 上行（写） | 把本客户端的记忆 / 规则 / 工作流 / 会话导出到中台。聚合、脱敏、内容 hash 增量 |
 | `memory-hub-consume` | 下行（读） | 从中台检索其他客户端沉淀的记忆 / 规则 / 会话摘要。**只读**，引用必须标注来源客户端与路径 |
+
+除 skills 外，仓库还包含两个产品组件：
+
+- `mcp/` —— 内置只读 MCP server（7 个工具）：任何支持 MCP 的客户端**无需安装 skill** 即可检索中台，见下文「MCP Server（内置）」；
+- `examples/hub/` —— 可直接体验的迷你中台数据，同时是检索一致性的测试基线。
 
 已适配宿主（按取证状态分级，`setup.py --list` 可查看）：
 Claude Code、ZCode、Codex、TRAE（国际版 / CN / SOLO）、WorkBuddy、Qoder、opencode、MiniMax Code。
@@ -60,7 +65,7 @@ flowchart LR
     end
 
     subgraph down["下行：消费（只读）"]
-        mcp["memory hub MCP server"]
+        mcp["built-in MCP server (read-only)"]
         search["search.py 本地检索"]
     end
 
@@ -188,23 +193,27 @@ python3 memory-hub-plugin/skills/memory-hub-setup/scripts/setup.py --client clau
 
 **存储位置**：默认为 `~/MemoryHub`；设置环境变量 `MEMORY_HUB_ROOT` 可指向任意目录。
 
-## MCP Server 示例
-仓库 [memory-hub-examples](https://github.com/KKDestiny/memory-hub-examples) 提供零依赖的只读
-MCP server 参考实现与可直接体验的示例数据目录，无需配套管理端即可走通 MCP 检索通道：
+## MCP Server（内置）
+
+本仓库自带只读 MCP server（`mcp/memory-hub-mcp.mjs`，零依赖 Node 18+）：**任何支持 MCP 的客户端无需安装本插件的 skill 即可检索中台**；写入仍由 export skill 负责，server 不提供任何写入工具。
 
 ```json
 {
   "mcpServers": {
     "memory-hub": {
+      "type": "stdio",
       "command": "node",
-      "args": ["/path/to/memory-hub-examples/mcp-server/memory-hub-mcp.mjs"],
-      "env": { "MEMORY_HUB_ROOT": "/path/to/memory-hub-examples/example-hub" }
+      "args": ["/path/to/memory-hub-plugin/mcp/memory-hub-mcp.mjs"],
+      "env": { "MEMORY_HUB_ROOT": "/Users/you/MemoryHub" }
     }
   }
 }
 ```
 
-配置后宿主即可调用 `search_hub` / `read_entry` / `hub_stats` 三个工具检索中台；详见该仓库 README。
+- **零配置**：支持 agent-plugins 标准的客户端经仓库根 `mcp.json` 自动发现，装插件即得；
+- **脚本接入**：`setup.py --client <id>` 默认写入上表条目（`--mcp-source desktop` 可切换为执务Studio 完整 server：授权写、聚合索引）；
+- **工具**：`search_hub` / `read_entry` / `get_session` / `list_partitions` / `list_clients` / `read_catalog` / `hub_stats`（全部只读），详见 [mcp/README.md](mcp/README.md)；
+- 想先用示例数据体验：把 `MEMORY_HUB_ROOT` 指向本仓库 [examples/hub](examples/)。
 
 ## 其他客户端如何接入
 

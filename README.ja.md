@@ -11,7 +11,7 @@
 
 複数の AI コーディングクライアントに**同じ記憶を共有させる**ローカルハブ。Claude Code で決めたアーキテクチャの約束、ZCode に記録した調査の結論、WorkBuddy でのセッションの成果——すべてがひとつのローカル記憶ストアに蓄積され、他のどのクライアントからでも検索・参照できます。
 
-> **汎用・ローカル優先・デスクトップアプリに非依存。** Python 標準ライブラリのみで実装（サードパーティ依存ゼロ）。中身は「ひとつの Markdown ディレクトリツリー + 3 つの skill」というファイルプロトコルで、オンラインでもオフラインでも完全に動作します。任意の管理アプリ（コンパニオン）があれば集約インデックスと HTTP 高速経路が追加されますが、**なくても一切問題ありません**。
+> **汎用・ローカル優先・デスクトップアプリに非依存。** Python 標準ライブラリのみで実装（サードパーティ依存ゼロ）。中身は「ひとつの Markdown ディレクトリツリー + 3 つの skill + 内蔵の読み取り専用 MCP サーバー」というファイルプロトコルで、オンラインでもオフラインでも完全に動作します。任意の管理アプリ（コンパニオン）があれば集約インデックスと HTTP 高速経路が追加されますが、**なくても一切問題ありません**。
 
 ```text
 Claude Code ─┐                                  ┌─> ZCode       「このプロジェクトの約束は？」
@@ -20,13 +20,18 @@ WorkBuddy   ─┤   (集約・マスキング・増分)     └─> WorkBuddy
 TRAE / ... ─┘      (読み取り専用)
 ```
 
-## 3 つの skill
+## 製品構成
 
 | Skill | 方向 | 役割 |
 |---|---|---|
 | `memory-hub-setup` | 接続セットアップ | ホストごとの**検証済み契約**に従って Stop フック / MCP 設定を書き込みます。冪等、書き込み前バックアップ（`*.hub-bak`）、ドライラン、読み戻し自己点検 |
 | `memory-hub-export` | 上り（書き込み） | このクライアントの記憶 / ルール / ワークフロー / セッションをハブへ書き出します。集約、マスキング、内容ハッシュによる増分同期 |
 | `memory-hub-consume` | 下り（読み取り） | 他クライアントが蓄積した記憶 / ルール / セッション要約をハブから検索します。**読み取り専用**。引用には必ずソースクライアントとパスを明記 |
+
+skills に加え、リポジトリにはもう 2 つの製品コンポーネントが同梱されています：
+
+- `mcp/` —— 内蔵の読み取り専用 MCP サーバー（7 ツール）。MCP 対応クライアントなら**skill をインストールせずに**ハブを検索できます。下の「MCP Server（組み込み）」を参照。
+- `examples/hub/` —— すぐ試せるミニハブ。検索一致性テストのゴールデン基準でもあります。
 
 対応ホスト（検証状況で階級分け、`setup.py --list` で一覧）：
 Claude Code、ZCode、Codex、TRAE（国際版 / CN / SOLO）、WorkBuddy、Qoder、opencode、MiniMax Code。
@@ -60,7 +65,7 @@ flowchart LR
     end
 
     subgraph down["下り：利用（読み取り専用）"]
-        mcp["memory hub MCP server"]
+        mcp["built-in MCP server (read-only)"]
         search["search.py ローカル検索"]
     end
 
@@ -188,24 +193,27 @@ python3 memory-hub-plugin/skills/memory-hub-setup/scripts/setup.py --client clau
 
 **保存場所**：既定は `~/MemoryHub`。環境変数 `MEMORY_HUB_ROOT` で任意のディレクトリに変更できます。
 
-## MCP Server サンプル
-companion リポジトリ [memory-hub-examples](https://github.com/KKDestiny/memory-hub-examples) に、
-依存ゼロの読み取り専用 MCP サーバー参考実装と、すぐ試せるサンプルデータを同梱しています。
-管理アプリがなくても MCP 検索チャネルを通せます：
+## MCP Server（組み込み）
+
+本リポジトリは読み取り専用 MCP サーバー（`mcp/memory-hub-mcp.mjs`、依存ゼロの Node 18+）を同梱しています。**MCP 対応クライアントなら本プラグインの skill をインストールせずにハブを検索できます**。書き込みは引き続き export skill の担当で、サーバーは書き込みツールを提供しません。
 
 ```json
 {
   "mcpServers": {
     "memory-hub": {
+      "type": "stdio",
       "command": "node",
-      "args": ["/path/to/memory-hub-examples/mcp-server/memory-hub-mcp.mjs"],
-      "env": { "MEMORY_HUB_ROOT": "/path/to/memory-hub-examples/example-hub" }
+      "args": ["/path/to/memory-hub-plugin/mcp/memory-hub-mcp.mjs"],
+      "env": { "MEMORY_HUB_ROOT": "/Users/you/MemoryHub" }
     }
   }
 }
 ```
 
-設定後、ホストから `search_hub` / `read_entry` / `hub_stats` の 3 ツールを呼び出せます。詳細は同リポジトリの README を参照してください。
+- **ゼロ設定**：agent-plugins 標準対応クライアントはルートの `mcp.json` を自動発見。プラグインを入れるだけで使えます；
+- **スクリプト接続**：`setup.py --client <id>` が上のエントリを既定で書き込みます（`--mcp-source desktop` で執務Studio の完全サーバー＝許可付き書き込み・集約インデックスに切替）；
+- **ツール**：`search_hub` / `read_entry` / `get_session` / `list_partitions` / `list_clients` / `read_catalog` / `hub_stats`（すべて読み取り専用）。詳細は [mcp/README.md](mcp/README.md)；
+- まずサンプルデータで試すには、`MEMORY_HUB_ROOT` を本リポジトリの [examples/hub](examples/) に向けてください。
 
 ## 他のクライアントを接続するには
 

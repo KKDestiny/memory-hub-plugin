@@ -3,11 +3,20 @@
 本文件记录本项目的值得注意的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.2.0] - Unreleased
 
 ### Added
 
-- README 六语言版本（简体中文、繁體中文、English、Français、日本語、Русский）。
+- 内置只读 MCP server（`mcp/memory-hub-mcp.mjs`，零依赖 Node 18+）作为产品的宿主级读取通道：
+  任何支持 MCP 的客户端无需安装 skill 即可检索中台。工具 7 个（全部只读）：`search_hub` /
+  `read_entry` / `get_session` / `list_partitions` / `list_clients` / `read_catalog` / `hub_stats`。
+- 仓库根 `mcp.json`：agent-plugins 标准客户端零配置自动发现内置 server。
+- `setup.py --mcp-source plugin|desktop`（缺省 plugin）：默认写入内置只读 server（不注入客户端
+  标识）；`desktop` 维持原注入（`--client` / `MEMORY_HUB_CLIENT_ID`）。默认模式发现既有条目指向
+  desktop server 时报告冲突（`mcp.written: "conflict"`），不静默改写。
+- 示例中台数据 `examples/hub/` 与说明；同时作为检索一致性的 golden 基线。
+- 测试新增 24 项（合计 73）：MCP 协议与 7 工具（node 子进程全链路）、search.py 与 server 的
+  golden 检索一致性、`merge_mcp_json` 的来源切换与冲突语义。
 
 ## [0.1.0] - 2026-11-07
 
@@ -15,6 +24,7 @@
 
 ### Added
 
+- README 六语言版本（简体中文、繁體中文、English、Français、日本語、Русский）。
 - 接入装配（memory-hub-setup）、上行导出（memory-hub-export）、下行检索（memory-hub-consume）
   三个 skill 的初始版本。
 - 宿主适配表 `skills/memory-hub-setup/scripts/adapters.json`，覆盖 Claude Code、ZCode、Codex、

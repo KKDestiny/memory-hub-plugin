@@ -4,5 +4,5 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
-  "description": "跨客户端共享记忆中台插件（skills + scripts），纯 Python 标准库实现。"
+  "description": "跨客户端共享记忆中台插件（skills + 内置只读 MCP server + scripts），纯标准库实现。"
 }

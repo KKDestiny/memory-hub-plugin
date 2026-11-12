@@ -11,7 +11,7 @@
 
 A local hub that lets multiple AI coding clients **share the same memory**: the architecture conventions you settled in Claude Code, the troubleshooting conclusions recorded in ZCode, and the session outcomes discussed in WorkBuddy all accumulate into one local memory store — searchable and referenceable from any other client.
 
-> **Generic, local-first, bound to no desktop app.** Built on the pure Python standard library (zero third-party dependencies); the core is a file protocol of "one Markdown directory tree + three skills" — it works fully offline with no online service. With an optional companion manager app you additionally get aggregated indexes and an HTTP fast path, but **everything works without it**.
+> **Generic, local-first, bound to no desktop app.** Built on the pure Python standard library (zero third-party dependencies); the core is a file protocol of "one Markdown directory tree + three skills + a built-in read-only MCP server" — it works fully offline with no online service. With an optional companion manager app you additionally get aggregated indexes and an HTTP fast path, but **everything works without it**.
 
 ```text
 Claude Code ─┐                                     ┌─> ZCode        "What was agreed on this project?"
@@ -20,13 +20,18 @@ WorkBuddy   ─┤   (aggregate · redact · incremental)   └─> WorkBuddy
 TRAE / ... ─┘                    (read-only)
 ```
 
-## The Three Skills
+## Components
 
 | Skill | Direction | Purpose |
 |---|---|---|
 | `memory-hub-setup` | Onboarding | Writes the Stop hook / MCP configuration into host configs according to each host's **verified contract**. Idempotent, backs up before writing (`*.hub-bak`), dry-run preview, read-back self-check |
 | `memory-hub-export` | Upstream (write) | Exports this client's memories / rules / workflows / sessions to the hub. Aggregation, redaction, content-hash incremental sync |
 | `memory-hub-consume` | Downstream (read) | Searches the hub for memories / rules / session digests contributed by other clients. **Read-only**; citations must state the source client and path |
+
+Beyond the skills, the repository ships two more product components:
+
+- `mcp/` — the built-in read-only MCP server (7 tools): any MCP-capable client can search the hub **without installing any skill**; see "MCP Server (Built-in)" below.
+- `examples/hub/` — a mini hub you can try immediately; it also serves as the golden baseline for search-parity tests.
 
 Supported hosts (graded by verification status; see `setup.py --list`):
 Claude Code, ZCode, Codex, TRAE (International / CN / SOLO), WorkBuddy, Qoder, opencode, MiniMax Code.
@@ -60,7 +65,7 @@ flowchart LR
     end
 
     subgraph down["Downstream: consumption (read-only)"]
-        mcp["memory hub MCP server"]
+        mcp["built-in MCP server (read-only)"]
         search["search.py local search"]
     end
 
@@ -188,25 +193,27 @@ Then register the three directories under `skills/` as your host's skills (copy 
 
 **Storage location**: defaults to `~/MemoryHub`; set the `MEMORY_HUB_ROOT` environment variable to point anywhere.
 
-## MCP Server Example
-The companion repository [memory-hub-examples](https://github.com/KKDestiny/memory-hub-examples) ships
-a zero-dependency, read-only MCP server reference implementation plus a ready-to-run sample hub, so the
-MCP retrieval channel works without the companion manager app:
+## MCP Server (Built-in)
+
+The repository ships its own read-only MCP server (`mcp/memory-hub-mcp.mjs`, zero-dependency Node 18+): **any MCP-capable client can search the hub without installing this plugin's skills**. Writes remain the export skill's job — the server exposes no write tools.
 
 ```json
 {
   "mcpServers": {
     "memory-hub": {
+      "type": "stdio",
       "command": "node",
-      "args": ["/path/to/memory-hub-examples/mcp-server/memory-hub-mcp.mjs"],
-      "env": { "MEMORY_HUB_ROOT": "/path/to/memory-hub-examples/example-hub" }
+      "args": ["/path/to/memory-hub-plugin/mcp/memory-hub-mcp.mjs"],
+      "env": { "MEMORY_HUB_ROOT": "/Users/you/MemoryHub" }
     }
   }
 }
 ```
 
-Once configured, the host can call the `search_hub` / `read_entry` / `hub_stats` tools — see that
-repository's README for details.
+- **Zero config**: agent-plugins-compliant clients auto-discover it via the root `mcp.json` — installing the plugin is enough;
+- **Script wiring**: `setup.py --client <id>` writes the entry above by default (`--mcp-source desktop` switches to the full Duti Studio server: authorized writes, aggregated indexes);
+- **Tools**: `search_hub` / `read_entry` / `get_session` / `list_partitions` / `list_clients` / `read_catalog` / `hub_stats` (all read-only) — see [mcp/README.md](mcp/README.md);
+- To try it on sample data first, point `MEMORY_HUB_ROOT` at this repository's [examples/hub](examples/).
 
 ## Adding Another Client
 
