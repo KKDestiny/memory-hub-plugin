@@ -211,7 +211,7 @@ python3 memory-hub-plugin/skills/memory-hub-setup/scripts/setup.py --client clau
 ```
 
 - **Без настройки**: клиенты со стандартом agent-plugins обнаруживают его автоматически через корневой `mcp.json` — достаточно установить плагин;
-- **Подключение скриптом**: `setup.py --client <id>` по умолчанию записывает указанную выше запись (`--mcp-source desktop` переключает на полный сервер Duti Studio: авторизованная запись, агрегированные индексы);
+- **Подключение скриптом**: `setup.py --client <id>` записывает запись выше автоматически (Duti Studio сам содержит этот плагин и подключается так же);
 - **Инструменты**: `search_hub` / `read_entry` / `get_session` / `list_partitions` / `list_clients` / `read_catalog` / `hub_stats` (все только для чтения) — см. [mcp/README.md](mcp/README.md);
 - Чтобы сначала попробовать на демо-данных, укажите `MEMORY_HUB_ROOT` на [examples/hub](examples/) этого репозитория.
 

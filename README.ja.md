@@ -211,7 +211,7 @@ python3 memory-hub-plugin/skills/memory-hub-setup/scripts/setup.py --client clau
 ```
 
 - **ゼロ設定**：agent-plugins 標準対応クライアントはルートの `mcp.json` を自動発見。プラグインを入れるだけで使えます；
-- **スクリプト接続**：`setup.py --client <id>` が上のエントリを既定で書き込みます（`--mcp-source desktop` で執務Studio の完全サーバー＝許可付き書き込み・集約インデックスに切替）；
+- **スクリプト接続**：`setup.py --client <id>` が上のエントリを自動で書き込みます（執務Studio 自体も本プラグインを内蔵し、同じ方法で接続します）；
 - **ツール**：`search_hub` / `read_entry` / `get_session` / `list_partitions` / `list_clients` / `read_catalog` / `hub_stats`（すべて読み取り専用）。詳細は [mcp/README.md](mcp/README.md)；
 - まずサンプルデータで試すには、`MEMORY_HUB_ROOT` を本リポジトリの [examples/hub](examples/) に向けてください。
 

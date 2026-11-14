@@ -211,7 +211,7 @@ Le dépôt embarque son propre serveur MCP en lecture seule (`mcp/memory-hub-mcp
 ```
 
 - **Sans configuration** : les clients conformes à agent-plugins le découvrent automatiquement via le `mcp.json` à la racine ;
-- **Câblage par script** : `setup.py --client <id>` écrit l'entrée ci-dessus par défaut (`--mcp-source desktop` bascule vers le serveur complet de Duti Studio : écritures autorisées, index agrégés) ;
+- **Câblage par script** : `setup.py --client <id>` écrit l'entrée ci-dessus automatiquement (Duti Studio embarque lui-même ce plugin et se connecte de la même façon) ;
 - **Outils** : `search_hub` / `read_entry` / `get_session` / `list_partitions` / `list_clients` / `read_catalog` / `hub_stats` (tous en lecture seule) — voir [mcp/README.md](mcp/README.md) ;
 - Pour essayer d'abord sur des données d'exemple, pointez `MEMORY_HUB_ROOT` vers [examples/hub](examples/) du dépôt.
 

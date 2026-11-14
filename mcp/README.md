@@ -21,7 +21,7 @@ Node.js 18+，零第三方依赖。由宿主按 MCP stdio 传输拉起（子进�
 
 ### ② 手动配置 / setup.py 接入
 
-`python3 skills/memory-hub-setup/scripts/setup.py --client <id>` 默认（`--mcp-source plugin`）
+`python3 skills/memory-hub-setup/scripts/setup.py --client <id>` 默认写入
 写入以下条目（ZCode 示例；各宿主配置文件位置见适配表 `--list`）：
 
 ```json
@@ -37,8 +37,8 @@ Node.js 18+，零第三方依赖。由宿主按 MCP stdio 传输拉起（子进�
 }
 ```
 
-与执务Studio 配套、需要授权写能力时：`--mcp-source desktop` 切换为其完整 server
-（注入 `--client <id>` 与 `MEMORY_HUB_CLIENT_ID`，见 setup.py 说明）。
+`setup.py --client <id>` 写入的即为本 server（唯一来源）。执务Studio 的另一个 MCP server
+（`duti-studio`，提供统计/人物/闪念等产品能力）与记忆中台接入无关，两者可并存互不干扰。
 
 想先用示例数据体验：把 `MEMORY_HUB_ROOT` 指向本仓库 `examples/hub/`。
 

@@ -211,7 +211,7 @@ python3 memory-hub-plugin/skills/memory-hub-setup/scripts/setup.py --client clau
 ```
 
 - **零設定**：支援 agent-plugins 標準的用戶端經倉庫根 `mcp.json` 自動發現，裝外掛即得；
-- **腳本接入**：`setup.py --client <id>` 預設寫入上表條目（`--mcp-source desktop` 可切換為執務Studio 完整 server：授權寫、聚合索引）；
+- **腳本接入**：`setup.py --client <id>` 自動寫入上表條目（執務Studio 自身同樣內建本外掛、以同一方式接入）；
 - **工具**：`search_hub` / `read_entry` / `get_session` / `list_partitions` / `list_clients` / `read_catalog` / `hub_stats`（全部唯讀），詳見 [mcp/README.md](mcp/README.md)；
 - 想先用範例資料體驗：把 `MEMORY_HUB_ROOT` 指向本倉庫 [examples/hub](examples/)。
 

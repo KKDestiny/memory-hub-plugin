@@ -11,9 +11,9 @@
   任何支持 MCP 的客户端无需安装 skill 即可检索中台。工具 7 个（全部只读）：`search_hub` /
   `read_entry` / `get_session` / `list_partitions` / `list_clients` / `read_catalog` / `hub_stats`。
 - 仓库根 `mcp.json`：agent-plugins 标准客户端零配置自动发现内置 server。
-- `setup.py --mcp-source plugin|desktop`（缺省 plugin）：默认写入内置只读 server（不注入客户端
-  标识）；`desktop` 维持原注入（`--client` / `MEMORY_HUB_CLIENT_ID`）。默认模式发现既有条目指向
-  desktop server 时报告冲突（`mcp.written: "conflict"`），不静默改写。
+- `setup.py` 写入内置只读 server 条目（`node <插件>/mcp/memory-hub-mcp.mjs` + env
+  `MEMORY_HUB_ROOT`；只读 server 不消费客户端身份，条目不注入 `--client` / `MEMORY_HUB_CLIENT_ID`）。
+  已存在条目时只校正数据根，其余字段不动。
 - 示例中台数据 `examples/hub/` 与说明；同时作为检索一致性的 golden 基线。
 - 测试新增 24 项（合计 73）：MCP 协议与 7 工具（node 子进程全链路）、search.py 与 server 的
   golden 检索一致性、`merge_mcp_json` 的来源切换与冲突语义。

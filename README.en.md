@@ -211,7 +211,7 @@ The repository ships its own read-only MCP server (`mcp/memory-hub-mcp.mjs`, zer
 ```
 
 - **Zero config**: agent-plugins-compliant clients auto-discover it via the root `mcp.json` — installing the plugin is enough;
-- **Script wiring**: `setup.py --client <id>` writes the entry above by default (`--mcp-source desktop` switches to the full Duti Studio server: authorized writes, aggregated indexes);
+- **Script wiring**: `setup.py --client <id>` writes the entry above automatically (Duti Studio itself bundles this plugin and connects the same way);
 - **Tools**: `search_hub` / `read_entry` / `get_session` / `list_partitions` / `list_clients` / `read_catalog` / `hub_stats` (all read-only) — see [mcp/README.md](mcp/README.md);
 - To try it on sample data first, point `MEMORY_HUB_ROOT` at this repository's [examples/hub](examples/).
 
